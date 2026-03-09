@@ -5,7 +5,7 @@
 | | |
 |---|---|
 | **Organization** | Apex Fintech Services |
-| **Version** | 1.0 |
+| **Version** | 1.1 |
 | **Date** | March 2026 |
 | **Classification** | Internal / Confidential |
 | **Prepared by** | Engineering Architecture Team |
@@ -111,7 +111,7 @@ These KPIs should be visible in a live benchmark dashboard within the web UI so 
 | Vendor Stub Scenario Coverage | 7/7 differentiated response types exercisable and testable | Demo script exercises all scenarios with pass/fail verification | Stub Quality (15 pts) |
 | Operator Queue Response | Flagged deposits appear in review queue within 1 second of flagging | Integration test timing assertion | Operator Workflow (10 pts) |
 | Return/Reversal Accuracy | 100% of returned checks reversed with exact $30.00 fee deduction | Test: reversal amount = original deposit + fee; ledger balanced post-reversal | Return Handling (10 pts) |
-| Test Coverage | Minimum 18 tests (exceeding the 10-test minimum) | `go test ./... -count=1` with coverage report | Tests & Evaluation (10 pts) |
+| Test Coverage | Minimum 20 tests (2x the 10-test minimum) | `go test ./... -count=1` with coverage report | Tests & Evaluation (10 pts) |
 | Setup Time | Clone-to-running in under 30 seconds via `make dev` | Manual verification; Makefile automates build, seed, and run | Developer Experience (10 pts) |
 | Benchmark Dashboard Freshness | KPI tiles update on page load and within 5 seconds of benchmark-affecting actions in demo mode | Manual verification plus UI integration test for dashboard refresh after deposit, settlement, and return actions | Operator Workflow (10 pts) + DevEx (10 pts) |
 
@@ -173,7 +173,7 @@ Requirements are organized by priority. Items sourced from "Interview" were adde
 | FR-06 | Dual-Layer Duplicate Detection | Vendor stub layer (image-based, configurable) + Funding service layer (composite key: routing + account + check# + amount in 30-day window). | Original + Interview |
 | FR-07 | Settlement File Generation | X9 ICL-structured JSON with file header, cash letter, bundle, check detail, and image view records. Control totals at each level for reconciliation. | Original + Interview |
 | FR-08 | EOD Cutoff with Injectable Clock | 6:30 PM CT cutoff via on-demand endpoint with optional `?as_of` parameter. Post-cutoff deposits roll to next business day (skip weekends). | Original + Interview |
-| FR-09 | Return/Reversal Processing | Synchronous processing in single DB transaction: reversal DEBIT on investor, $30 fee DEBIT, corresponding CREDITs on omnibus, state transition to Returned, notification event. | Original + Interview |
+| FR-09 | Return/Reversal Processing | Synchronous processing in single DB transaction: 4 ledger entries as 2 balanced pairs (reversal pair: DEBIT investor / CREDIT omnibus; fee pair: DEBIT investor $30 / CREDIT omnibus $30), state transition to Returned, notification event. Valid from both FundsPosted and Completed states. | Original + Interview |
 | FR-10 | Operator Review Queue | Web UI showing flagged deposits with check images, MICR data, risk scores. Approve/reject with mandatory audit logging. Search and filter capabilities. | Original + Interview |
 
 ### 5.2 P1: Important (Should Ship)
@@ -228,7 +228,7 @@ The following describes the primary workflow for a successful deposit, from subm
 | Step | Actor | Action | System Response | State |
 |---|---|---|---|---|
 | 1 | Settlement Bank | Sends return notification (NSF reason code) | System receives `POST /api/v1/returns` with transfer_id and reason | FundsPosted |
-| 2 | System | Processes return in single DB transaction | 1) DEBIT investor 15000 cents (reversal). 2) DEBIT investor 3000 cents ($30 fee). 3) CREDIT omnibus 18000 cents. 4) Log RETURN_RECEIVED, REVERSAL_POSTED, INVESTOR_NOTIFIED events. | Returned |
+| 2 | System | Processes return in single DB transaction | Creates 4 balanced ledger entries: 1) DEBIT investor 15000 cents / CREDIT omnibus 15000 cents (reversal pair). 2) DEBIT investor 3000 cents / CREDIT omnibus 3000 cents (fee pair). Logs RETURN_RECEIVED, REVERSAL_POSTED, INVESTOR_NOTIFIED events. | Returned |
 | 3 | Investor | Receives notification | Message: check returned (NSF), $150.00 reversed, $30.00 fee applied. Net debit: $180.00. | Returned |
 
 ---
@@ -264,12 +264,100 @@ The following decisions were made across three rounds of architectural interview
 
 | Table | Purpose | Key Columns |
 |---|---|---|
-| `transfers` | Business object tracking deposit lifecycle | id (UUID), investor_account_id, correspondent_id, amount (int64 cents), status (enum), vendor_transaction_id, check_number, micr_data (JSON), risk_score, contribution_type, created_at, updated_at |
+| `transfers` | Business object tracking deposit lifecycle | id (UUID), investor_account_id, correspondent_id, amount (int64 cents), status (enum), vendor_transaction_id, check_number, micr_data (JSON), risk_score, contribution_type, settlement_batch_id (nullable), created_at, updated_at |
 | `ledger_entries` | Immutable double-entry financial records | id (UUID), transfer_id (FK), account_id, entry_type (DEBIT\|CREDIT), amount (int64 cents), memo, posted_at, reversal_of (nullable FK) |
-| `deposit_events` | Unified audit trail and decision trace | id, transfer_id (FK), event_type (enum), actor, payload (JSON), created_at |
+| `deposit_events` | Unified audit trail and decision trace (consolidates both state transition logging and per-deposit event history into a single table) | id, transfer_id (FK), event_type (enum), actor, payload (JSON), created_at |
 | `schema_migrations` | Forward-only migration tracking | version (INT PK), applied_at (TIMESTAMP) |
 
-### 7.3 Project Structure
+> **Consolidation note:** The `deposit_events` table serves as **both** the state transition audit log and the general-purpose event log. There is no separate `transfer_state_log` table. State transitions are recorded as `deposit_events` with event types like `STATE_TRANSITION` and a payload containing `from_state`, `to_state`, `actor`, and `reason`. This avoids redundant logging while preserving the full audit trail. All references to `transfer_state_log` in the architectural blueprint should be read as `deposit_events` with a `STATE_TRANSITION` event type.
+
+> **Settlement guard:** The `settlement_batch_id` column on `transfers` prevents double-batching. When a deposit is included in a settlement file, its `settlement_batch_id` is set within the same transaction that generates the file. The settlement query filters on `WHERE settlement_batch_id IS NULL AND status = 'FundsPosted'`, ensuring no deposit can appear in two settlement files.
+
+### 7.3 Component Interaction Diagram
+
+```
+                          ┌─────────────────────────────────────────────┐
+                          │              HTTP Layer (api/)              │
+                          │  Auth Middleware → Router → Handlers        │
+                          └────┬──────┬──────┬──────┬──────┬───────────┘
+                               │      │      │      │      │
+                    ┌──────────┘      │      │      │      └──────────┐
+                    ▼                 ▼      │      ▼                 ▼
+            ┌──────────────┐  ┌────────────┐ │ ┌──────────┐  ┌──────────────┐
+            │ Vendor Stub  │  │  Funding   │ │ │ Operator │  │   Returns    │
+            │  (vendor/)   │  │  Service   │ │ │(operator/)│  │  (returns/)  │
+            │              │  │ (funding/) │ │ │           │  │              │
+            │ • Scenario   │  │ • Session  │ │ │ • Queue   │  │ • Validate   │
+            │   routing    │  │   auth     │ │ │   queries │  │   state      │
+            │ • MICR data  │  │ • Rules    │ │ │ • Approve │  │ • Reversal   │
+            │ • Images     │  │ • Acct     │ │ │ • Reject  │  │   entries    │
+            └──────┬───────┘  │   resolve  │ │ │ • Audit   │  │ • Fee calc   │
+                   │          └──────┬─────┘ │ └─────┬─────┘  └──────┬───────┘
+                   │                 │       │       │               │
+                   └────────┬────────┘       │       └───────┬───────┘
+                            ▼                │               │
+                   ┌─────────────────┐       │               │
+                   │    Pipeline     │       │               │
+                   │  Orchestrator   │       │               │
+                   │   (funding/)    │       │               │
+                   │                 │       │               │
+                   │ Step 1: Vendor  │       │               │
+                   │ Step 2: Rules   │       │               │
+                   │ Step 3: Ledger  │       │               │
+                   └────────┬────────┘       │               │
+                            │                │               │
+                            ▼                ▼               ▼
+                   ┌─────────────────────────────────────────────────┐
+                   │              Ledger Service (funding/)          │
+                   │  • postToLedger(): balanced DEBIT+CREDIT pairs  │
+                   │  • BEGIN IMMEDIATE transaction boundaries       │
+                   └────────────────────┬────────────────────────────┘
+                                        │
+                   ┌────────────────────┐│┌──────────────────────────┐
+                   │  Settlement Engine │││    Store Layer (store/)   │
+                   │  (settlement/)     │││                          │
+                   │                    │▼│  • SQLite connection     │
+                   │  • X9 JSON gen     │ │  • Migration runner      │
+                   │  • EOD cutoff      ├─┤  • Repository methods    │
+                   │  • Batch guard     │ │  • Seed data             │
+                   └────────────────────┘ └──────────┬───────────────┘
+                                                     │
+                                                     ▼
+                                              ┌──────────────┐
+                                              │   SQLite DB   │
+                                              │               │
+                                              │ • transfers   │
+                                              │ • ledger_entries│
+                                              │ • deposit_events│
+                                              └──────────────┘
+```
+
+**Request flow (happy path):**
+1. Client sends `POST /api/v1/deposits` with Bearer token
+2. Auth middleware validates token → handler creates transfer record (Requested)
+3. Pipeline orchestrator executes Step 1: Vendor Stub → validates images → returns CLEAN_PASS (Validating)
+4. Pipeline Step 2: Funding Service → applies rules → auto-approves (Analyzing → Approved)
+5. Pipeline Step 3: Ledger Service → posts balanced DEBIT/CREDIT pair (Approved → FundsPosted)
+6. Later: `POST /api/v1/settlement/batches` → Settlement Engine queries unbatched FundsPosted deposits → generates X9 JSON → marks deposits with `settlement_batch_id`
+7. Settlement acknowledgment → FundsPosted → Completed
+
+### 7.4 State Transition → Side-Effect Mapping
+
+Every state transition triggers specific side effects. This table is the authoritative specification for the pipeline orchestrator (TICKET-007) and related handlers.
+
+| Transition | Trigger | Side Effects | Actor |
+|---|---|---|---|
+| Requested → Validating | Pipeline Step 1 starts | Send deposit to vendor stub; store vendor response on transfer record | system |
+| Validating → Analyzing | Vendor returns non-terminal result (CLEAN_PASS, MICR_FAILURE, AMOUNT_MISMATCH) | Compute risk score; store score on transfer; if HIGH/CRITICAL, flag for operator review | system |
+| Validating → Rejected | Vendor returns terminal failure (IQA_BLUR, IQA_GLARE, DUPLICATE) | Log rejection reason; emit DEPOSIT_REJECTED event; no ledger entries created | system |
+| Analyzing → Approved | Business rules pass + risk LOW (auto-approve) OR operator clicks Approve | Log approval with actor attribution; emit DEPOSIT_APPROVED event | system or operator:\<id\> |
+| Analyzing → Rejected | Business rules fail (OVER_LIMIT, DUPLICATE, INELIGIBLE) OR operator clicks Reject | Log rejection reason; emit DEPOSIT_REJECTED event; no ledger entries created | system or operator:\<id\> |
+| Approved → FundsPosted | Pipeline Step 3 (immediate after Approved) | **Post to ledger:** DEBIT omnibus + CREDIT investor (balanced pair, single tx); emit LEDGER_POSTED event | system |
+| FundsPosted → Completed | Settlement acknowledgment received | Emit SETTLEMENT_CONFIRMED event | system |
+| FundsPosted → Returned | Return notification received | **Reversal:** 4 ledger entries (2 balanced pairs: reversal + fee) in single tx; emit RETURN_RECEIVED, REVERSAL_POSTED, INVESTOR_NOTIFIED events | system |
+| Completed → Returned | Late return notification received | Same as FundsPosted → Returned | system |
+
+> **Invariant:** No ledger entries are ever created for transitions to Rejected. Ledger entries are only created at `Approved → FundsPosted` (posting) and `FundsPosted/Completed → Returned` (reversal). This guarantees that the ledger only contains financially meaningful records.
 
 The repository follows a domain-oriented package layout where directory structure directly mirrors the spec's service boundaries:
 
@@ -300,7 +388,7 @@ The repository follows a domain-oriented package layout where directory structur
 └── go.mod
 ```
 
-### 7.4 REST API Endpoints
+### 7.6 REST API Endpoints
 
 ```
 # Core deposit lifecycle
@@ -329,7 +417,7 @@ POST   /api/v1/returns                            # Simulate check return
 GET    /api/v1/returns/{id}                       # Return details with reversal info
 ```
 
-### 7.5 Error Code Taxonomy
+### 7.7 Error Code Taxonomy
 
 ```
 VENDOR.IQA_BLUR            → 422  Image quality: blur detected
@@ -346,12 +434,15 @@ SETTLEMENT.CUTOFF_PASSED   → 422  Past EOD cutoff, rolled to next business day
 SYSTEM.INTERNAL            → 500  Unexpected error (logged with correlation ID)
 ```
 
-### 7.6 Transfer State Machine
+### 7.8 Transfer State Machine
 
 ```
+                                        ┌──────────────────────────────────┐
+                                        │          (auto-approve)          │
+                                        ▼                                  │
 Requested ──→ Validating ──→ Analyzing ──→ Approved ──→ FundsPosted ──→ Completed
-                  │               │                         │
-                  └──→ Rejected   └──→ Rejected             └──→ Returned
+                  │               │                         │               │
+                  └──→ Rejected   └──→ Rejected             └──→ Returned ◄─┘
 ```
 
 | State | Description | Valid Transitions |
@@ -359,11 +450,13 @@ Requested ──→ Validating ──→ Analyzing ──→ Approved ──→ 
 | Requested | Deposit submitted by investor | Validating |
 | Validating | Sent to Vendor Service for IQA/MICR/OCR | Analyzing, Rejected |
 | Analyzing | Business rules being applied by Funding Service | Approved, Rejected |
-| Approved | Passed all checks; awaiting ledger posting | FundsPosted |
+| Approved | Passed all checks; awaiting ledger posting. **Always persisted** — even auto-approved deposits log this transition before proceeding to FundsPosted, ensuring a complete audit trail. | FundsPosted |
 | FundsPosted | Provisional credit posted to investor account | Completed, Returned |
-| Completed | Settlement confirmed by Settlement Bank | *(terminal)* |
+| Completed | Settlement confirmed by Settlement Bank | Returned |
 | Rejected | Failed validation, business rules, or operator review | *(terminal)* |
 | Returned | Check bounced after settlement; reversal posted | *(terminal)* |
+
+> **Implementation note:** The `Approved` state must always be persisted as a discrete, logged transition — even for auto-approved deposits where the pipeline immediately continues to ledger posting. The transition sequence is always `Analyzing → Approved → FundsPosted`, never `Analyzing → FundsPosted` directly. This ensures the `transfer_state_log` / `deposit_events` audit trail is complete and that operators can distinguish auto-approved from operator-approved deposits by checking the actor field (`system` vs `operator:<id>`).
 
 ---
 
@@ -515,13 +608,14 @@ Implement ledger posting service that creates balanced DEBIT + CREDIT entry pair
 
 **Size:** M (0.5–1 day) | **Milestone:** M4 — Pipeline
 
-Wire the vendor stub and funding service into a step function pipeline. Each step receives the deposit and returns a typed action (Continue, HaltRejected, HaltFlagged, HaltApproved). Pipeline runner executes steps in sequence, manages state transitions, and logs each step to `deposit_events`.
+Wire the vendor stub and funding service into a step function pipeline. Each step receives the deposit and returns a typed action (Continue, HaltRejected, HaltFlagged, HaltApproved). Pipeline runner executes steps in sequence, manages state transitions per the Side-Effect Mapping (Section 7.4), and logs each step to `deposit_events`.
 
 **Acceptance Criteria:**
-- [ ] Clean deposit flows: Requested → Validating → Analyzing → FundsPosted.
+- [ ] Clean deposit flows: Requested → Validating → Analyzing → Approved → FundsPosted (Approved state always persisted, even for auto-approved deposits).
 - [ ] BLUR deposit flows: Requested → Validating → Rejected (pipeline halts at step 1).
 - [ ] MICR failure flows: Requested → Validating → Analyzing (flagged, needs review).
 - [ ] Each pipeline step logged as `deposit_event` with step index and action.
+- [ ] Auto-approved deposits have actor=`system` on the Analyzing→Approved transition; operator-approved deposits have actor=`operator:<id>`.
 
 ---
 
@@ -570,6 +664,8 @@ Implement X9 ICL-structured JSON settlement file generator. Hierarchical structu
 - [ ] Deposits submitted after 6:30 PM CT get next business day settlement date.
 - [ ] Friday 7:00 PM CT deposit rolls to Monday.
 - [ ] Rejected deposits are never included in settlement files.
+- [ ] Deposits included in a batch have `settlement_batch_id` set; generating a second batch does not re-include them (no double-batching).
+- [ ] Batch generation and `settlement_batch_id` assignment happen within the same database transaction.
 
 ---
 
@@ -577,11 +673,18 @@ Implement X9 ICL-structured JSON settlement file generator. Hierarchical structu
 
 **Size:** M (0.5–1 day) | **Milestone:** M7 — Returns
 
-Implement return handling endpoint (`POST /api/v1/returns`) that processes the full reversal in a single database transaction: validates transfer state (must be FundsPosted or Completed), creates reversal DEBIT entries on investor account, creates fee DEBIT entry ($30 = 3000 cents), creates corresponding CREDIT entries on omnibus account, transitions to Returned state, and logs all events.
+Implement return handling endpoint (`POST /api/v1/returns`) that processes the full reversal in a single database transaction: validates transfer state (must be FundsPosted or Completed), creates reversal ledger entries, transitions to Returned state, and logs all events.
+
+Reversal creates exactly **4 ledger entries as 2 balanced pairs:**
+1. **Reversal pair:** DEBIT investor (original amount) / CREDIT omnibus (original amount)
+2. **Fee pair:** DEBIT investor (3000 cents = $30.00) / CREDIT omnibus (3000 cents)
+
+Both pairs are inserted within a single `BEGIN IMMEDIATE` transaction via two calls to `postToLedger()`.
 
 **Acceptance Criteria:**
 - [ ] Return on FundsPosted deposit succeeds; transfer moves to Returned.
-- [ ] Reversal creates 4 ledger entries: 2 DEBITs (investor), 2 CREDITs (omnibus).
+- [ ] Return on Completed deposit succeeds; transfer moves to Returned (late returns).
+- [ ] Reversal creates exactly 4 ledger entries: 2 balanced pairs (reversal + fee), each with matching DEBIT and CREDIT amounts.
 - [ ] Fee amount is exactly 3000 cents ($30.00).
 - [ ] Return on Requested deposit returns `STATE.INVALID_TRANSITION` error.
 - [ ] Post-reversal, ledger debits still equal credits (invariant preserved).
@@ -630,11 +733,16 @@ Write 18+ tests: integration tests with real in-memory SQLite exercising the ful
 | 16 | `TestAmountParsing_EdgeCases` | Unit | Fractional cents, negatives, overflow rejected |
 | 17 | `TestCutoff_BusinessDayLogic` | Unit | Friday evening → Monday, weekend → Monday |
 | 18 | `TestLedgerInvariant_DebitsEqualCredits` | Integration | Sum of all debits == sum of all credits |
+| 19 | `TestSettlement_NoDoubleBatching` | Integration | Second batch generation returns zero items; no deposit appears in two files |
+| 20 | `TestReturnOnCompletedDeposit` | Integration | Late return on Completed deposit succeeds with correct reversal |
+
+> **Shift-left testing note:** Tests 15–17 (state machine, amount parsing, cutoff logic) are pure unit tests with no service dependencies. These should be written during Phase 1 alongside TICKET-003 and TICKET-006 to catch foundational bugs early, rather than waiting for Phase 3. The remaining integration tests require the full service stack and belong in Phase 3.
 
 **Acceptance Criteria:**
-- [ ] `go test ./... -count=1` passes with 18+ tests.
+- [ ] `go test ./... -count=1` passes with 20+ tests.
 - [ ] `TestLedgerInvariant_DebitsEqualCredits` passes after running all scenarios.
 - [ ] Each of the 7 vendor stub scenarios has a named integration test.
+- [ ] `TestSettlement_NoDoubleBatching` verifies idempotent batch generation.
 - [ ] Coverage report generated at `reports/coverage.out`.
 
 ---
@@ -643,14 +751,16 @@ Write 18+ tests: integration tests with real in-memory SQLite exercising the ful
 
 **Size:** M (0.5–1 day) | **Milestone:** M8 — Tests & Demo
 
-Write narrated 6-act demo script (`scripts/demo.sh`) with colored pass/fail output and summary. Acts: Happy Path, Vendor Rejections, Business Rules, Operator Review, Settlement, Return/Reversal. Create Makefile with targets: `help` (default), `dev`, `test`, `demo`, `report`, `docker`, `clean`. `make help` prints all available commands.
+Write narrated 6-act demo script (`scripts/demo.sh`) with colored pass/fail output and summary. Acts: Happy Path, Vendor Rejections, Business Rules, Operator Review, Settlement, Return/Reversal. Create Makefile with targets: `help` (default), `dev`, `test`, `demo`, `demo-full`, `report`, `docker`, `clean`. `make help` prints all available commands.
 
 **Acceptance Criteria:**
 - [ ] `make help` (default target) lists all available commands.
 - [ ] `make dev` builds, seeds, and starts server with printed URLs.
 - [ ] `make demo` runs all scenarios and outputs formatted results.
+- [ ] `make demo-full` starts server in background, waits for readiness, runs demo, stops server (fully self-contained single-command demo).
 - [ ] `make report` generates test + demo reports in `/reports`.
 - [ ] Demo output saved to `reports/demo_results.txt`.
+- [ ] `demo.sh` checks for `jq` presence at startup and prints install instructions if missing.
 
 ---
 
@@ -716,14 +826,35 @@ This matrix maps every evaluation rubric category to the specific PRD sections, 
 
 | Rubric Category | Points | PRD Sections | Key Tickets | Validation Tests |
 |---|---|---|---|---|
-| System Design & Architecture | 20 | Sec 7 (Architecture), Sec 8 (Roadmap) | TICKET-001, 002, 003, 015 | State machine transitions, config validation |
-| Core Correctness | 25 | Sec 5.1 (FR-01 to FR-09), Sec 6 (User Flows) | TICKET-005, 006, 007, 010 | Happy path E2E, ledger invariant, settlement reconciliation |
+| System Design & Architecture | 20 | Sec 7 (Architecture, Component Diagram 7.3, Side-Effect Map 7.4), Sec 8 (Roadmap) | TICKET-001, 002, 003, 015 | State machine transitions, config validation |
+| Core Correctness | 25 | Sec 5.1 (FR-01 to FR-09), Sec 6 (User Flows), Sec 7.4 (Side-Effect Map) | TICKET-005, 006, 007, 010 | Happy path E2E, ledger invariant, settlement reconciliation, no double-batching |
 | Vendor Stub Quality | 15 | Sec 5.1 (FR-02), Sec 4.1 (US-02) | TICKET-004 | 7 scenario tests, header override test |
 | Operator Workflow | 10 | Sec 5.1 (FR-10), Sec 5.2 (FR-11, 13, 14) | TICKET-009 | Approve/reject tests, audit log verification |
-| Return/Reversal | 10 | Sec 5.1 (FR-09), Sec 6.3 (Return Flow) | TICKET-011 | Reversal + fee test, ledger balance post-reversal |
-| Tests & Evaluation | 10 | Sec 3 (KPIs), Sec 9 (Tickets) | TICKET-013, 014 | 18 tests, demo script, coverage report |
-| Developer Experience | 10 | Sec 8 (Phasing), Sec 9 (Tickets) | TICKET-014, 015 | `make dev`, `make demo`, `make report` all succeed |
+| Return/Reversal | 10 | Sec 5.1 (FR-09), Sec 6.3 (Return Flow) | TICKET-011 | Reversal + fee test (4 entries / 2 balanced pairs), ledger balance post-reversal, return on Completed |
+| Tests & Evaluation | 10 | Sec 3 (KPIs), Sec 9 (Tickets) | TICKET-013, 014 | 20 tests, demo script, coverage report |
+| Developer Experience | 10 | Sec 8 (Phasing), Sec 9 (Tickets) | TICKET-014, 015 | `make dev`, `make demo`, `make demo-full`, `make report` all succeed |
 
 ---
 
-*Mobile Check Deposit System PRD v1.0 — Apex Fintech Services — March 2026*
+*Mobile Check Deposit System PRD v1.1 — Apex Fintech Services — March 2026*
+
+---
+
+### Changelog
+
+**v1.1 (2026-03-09) — Post-Review Updates**
+
+| Change | Rationale |
+|---|---|
+| Fixed reversal entry count in Section 6.3 | PRD showed 3 entries (2 DEBITs + 1 CREDIT); corrected to 4 entries as 2 balanced DEBIT/CREDIT pairs matching Blueprint Q17 implementation |
+| Clarified `Approved` state is always persisted (Section 7.8) | Pipeline was skipping `Approved` for auto-approved deposits, creating a phantom state with incomplete audit trail |
+| Added `Completed → Returned` transition (Section 7.8) | Late returns after settlement are a real-world scenario; implementation already supported it but diagram omitted it |
+| Added `settlement_batch_id` column and double-batching guard (Section 7.2) | No mechanism previously prevented a deposit from appearing in two settlement files |
+| Consolidated `transfer_state_log` into `deposit_events` (Section 7.2) | Blueprint referenced both tables; clarified that `deposit_events` with `STATE_TRANSITION` event type serves both purposes |
+| Added Component Interaction Diagram (Section 7.3) | Reviewers needed a visual showing the full HTTP request path through all services |
+| Added State Transition → Side-Effect Mapping (Section 7.4) | No authoritative mapping existed for which side effects occur at each transition; critical for pipeline implementation |
+| Updated TICKET-007 to require `Approved` state persistence | Acceptance criteria previously showed `Analyzing → FundsPosted` (skipping `Approved`) |
+| Added double-batching acceptance criteria to TICKET-010 | Settlement guard needs explicit test coverage |
+| Added `TestSettlement_NoDoubleBatching` and `TestReturnOnCompletedDeposit` to test manifest | Test count increased from 18 to 20 |
+| Added `make demo-full` target and `jq` dependency check to TICKET-014 | Improves developer experience for reviewers |
+| Added shift-left testing note to TICKET-013 | Unit tests for state machine, amount parsing, and cutoff logic should be written in Phase 1 |
