@@ -1,0 +1,24 @@
+# Allowlist of omnibus account IDs. Every correspondent's omnibus_account_id must appear here.
+omnibus_accounts:
+  - OMNI-APEX-001
+  - OMNI-BETA-001
+  - OMNI-GAMMA-001
+
+correspondents:
+  - id: CORR-APEX
+    name: Apex Fintech Services
+    deposit_limit_cents: 500000   # $5,000
+    omnibus_account_id: OMNI-APEX-001
+    default_contribution_type: INDIVIDUAL
+
+  - id: CORR-BETA
+    name: Beta Clearing Corp
+    deposit_limit_cents: 300000   # $3,000
+    omnibus_account_id: OMNI-BETA-001
+    default_contribution_type: EMPLOYER
+
+  - id: CORR-GAMMA
+    name: Gamma Advisory
+    deposit_limit_cents: 750000   # $7,500
+    omnibus_account_id: OMNI-GAMMA-001
+    default_contribution_type: ROLLOVER
