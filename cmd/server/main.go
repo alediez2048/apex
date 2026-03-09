@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/alediez2048/apex/internal/config"
+	"github.com/alediez2048/apex/internal/store"
 )
 
 func main() {
@@ -21,9 +22,22 @@ func main() {
 	slog.Info("config loaded",
 		"port", cfg.Port,
 		"env", cfg.Env,
+		"db_path", cfg.DBPath,
 		"correspondents", len(cfg.Correspondents),
 		"investors", len(cfg.Investors),
 	)
+
+	db, err := store.Open(cfg.DBPath)
+	if err != nil {
+		slog.Error("database open failed", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	if err := store.RunMigrations(db); err != nil {
+		slog.Error("migrations failed", "error", err)
+		os.Exit(1)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

@@ -9,10 +9,11 @@ import (
 
 // Config holds application configuration from env and YAML.
 type Config struct {
-	Port          string         `yaml:"-"`
-	Env           string         `yaml:"-"`
-	Correspondents []Correspondent `yaml:"-"`
-	Investors     []Investor     `yaml:"-"`
+	Port          string
+	Env           string
+	DBPath        string
+	Correspondents []Correspondent
+	Investors     []Investor
 }
 
 // Correspondent is a firm with deposit limits and omnibus account.
@@ -26,20 +27,18 @@ type Correspondent struct {
 
 // Investor is a test investor with API key and account mapping.
 type Investor struct {
-	AccountID      string `yaml:"account_id"`
-	APIKey         string `yaml:"api_key"`
+	AccountID       string `yaml:"account_id"`
+	APIKey          string `yaml:"api_key"`
 	CorrespondentID string `yaml:"correspondent_id"`
-	Eligible       bool   `yaml:"eligible"`
-	AccountType    string `yaml:"account_type"` // IRA, standard
+	Eligible        bool   `yaml:"eligible"`
+	AccountType     string `yaml:"account_type"`
 }
 
-// correspondentsFile is the on-disk shape of correspondents.yaml.
 type correspondentsFile struct {
 	OmnibusAccounts []string       `yaml:"omnibus_accounts"`
 	Correspondents  []Correspondent `yaml:"correspondents"`
 }
 
-// investorsFile is the on-disk shape of investors.yaml.
 type investorsFile struct {
 	Investors []Investor `yaml:"investors"`
 }
@@ -54,8 +53,12 @@ func Load() (*Config, error) {
 	if env == "" {
 		env = "development"
 	}
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "data/apex.db"
+	}
 
-	cfg := &Config{Port: port, Env: env}
+	cfg := &Config{Port: port, Env: env, DBPath: dbPath}
 
 	corrPath := "config/correspondents.yaml"
 	corrData, err := os.ReadFile(corrPath)
@@ -79,7 +82,6 @@ func Load() (*Config, error) {
 	}
 	cfg.Investors = invFile.Investors
 
-	// Startup validation: every correspondent's omnibus_account_id must exist in allowlist
 	allowlist := make(map[string]bool)
 	for _, id := range corrFile.OmnibusAccounts {
 		allowlist[id] = true
@@ -89,7 +91,7 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("correspondent %s: omnibus_account_id is required", c.ID)
 		}
 		if !allowlist[c.OmnibusAccountID] {
-			return nil, fmt.Errorf("correspondent %s references non-existent omnibus account %q (not in omnibus_accounts)", c.ID, c.OmnibusAccountID)
+			return nil, fmt.Errorf("correspondent %s references non-existent omnibus account %q", c.ID, c.OmnibusAccountID)
 		}
 	}
 

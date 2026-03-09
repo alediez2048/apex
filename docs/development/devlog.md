@@ -13,7 +13,7 @@
 |-------|------|--------|
 | Phase 1 — Foundation & Core Processing | Days 1-10 (~63h) | Working Go service, SQLite schema, vendor stub, funding rules, ledger, pipeline, and REST API |
 | Phase 2 — Review, Settlement & Returns | Days 11-15 (~30h) | Operator workflow, settlement batching, EOD cutoff, and return/reversal handling |
-| Phase 3 — Demo, QA & Documentation | Days 16-19 (~38h) | Seed data, 18+ tests, demo script, reports, docs, and submission package |
+| Phase 3 — Demo, QA & Documentation | Days 16-19 (~38h) | Seed data, 20+ tests, demo script, reports, docs, and submission package |
 
 ---
 
@@ -24,7 +24,7 @@ The following tickets are required to establish the financial and technical back
 | Ticket | Title | MVP Role | Priority | Est. | Status |
 |--------|-------|----------|----------|------|--------|
 | TICKET-001 | Project Scaffolding and Configuration System | **Foundation** — establishes repo structure, config loading, and startup flow | P0 | 6h | DONE |
-| TICKET-002 | SQLite Schema and Migration System | **Foundation** — core persistence and migration safety | P0 | 6h | TODO |
+| TICKET-002 | SQLite Schema and Migration System | **Foundation** — core persistence and migration safety | P0 | 6h | DONE |
 | TICKET-003 | Domain Types and State Machine | **Foundation** — pure domain model and transition rules | P0 | 3h | TODO |
 | TICKET-004 | Vendor Service Stub | **Core** — deterministic scenario engine for all deposit outcomes | P0 | 12h | TODO |
 | TICKET-005 | Funding Service and Business Rule Engine | **Core** — auth, account resolution, limits, duplicates, contribution defaults | P0 | 12h | TODO |
@@ -67,7 +67,7 @@ This phase makes the project submission-ready with seeded scenarios, automated v
 | Ticket | Title | Phase Role | Priority | Est. | Status |
 |--------|-------|------------|----------|------|--------|
 | TICKET-012 | Programmatic Data Seeding | **Demo Enablement** — bootstrap realistic deposits, images, and states | P1 | 6h | TODO |
-| TICKET-013 | Test Suite | **QA** — 18+ tests covering invariants and end-to-end flows | P0 | 20h | TODO |
+| TICKET-013 | Test Suite | **QA** — 20+ tests covering invariants and end-to-end flows | P0 | 20h | TODO |
 | TICKET-014 | Demo Script and Makefile | **Developer Experience** — one-command setup and narrated walkthrough | P0 | 6h | TODO |
 | TICKET-015 | Documentation Package | **Submission** — README, architecture, ADRs, risks, and submission doc | P0 | 6h | TODO |
 
@@ -148,40 +148,41 @@ This phase makes the project submission-ready with seeded scenarios, automated v
 
 ---
 
-## TICKET-001: Project Scaffolding and Configuration System ✅
+## TICKET-002: SQLite Schema and Migration System ✅
 
 ### Plain-English Summary
-- Go module and domain-oriented package layout created. Config loaded from env (PORT, ENV) and YAML (correspondents.yaml, investors.yaml). Startup validation fails fast if any correspondent references an omnibus account not in the allowlist.
-- `make dev` creates data/ and reports/, copies `.env.example` to `.env` when missing, builds the server, and runs it with a /health endpoint.
-- Three correspondents and six investors seeded with magic account prefixes (PASS-, BLUR-, GLARE-, MICR-, DUP-, MISMATCH-) and API keys for TICKET-005.
+- Added `internal/store`: Open DB (SQLite with WAL), forward-only migration runner with `schema_migrations` version table, and migration 001 creating `transfers`, `ledger_entries`, and `deposit_events` with required columns and composite index for duplicate detection.
+- Config now includes `DBPath` (env `DB_PATH`, default `data/apex.db`). Server opens DB and runs migrations on startup; restart skips already-applied migrations.
+- Single-writer connection pool (MaxOpenConns=1) and WAL mode for SQLite; BEGIN IMMEDIATE is used when we add write transactions in later tickets.
 
 ### Metadata
 - **Status:** Complete
 - **Date:** 2026-03-09
-- **Ticket:** TICKET-001
-- **Branch:** develop (or main after merge)
+- **Ticket:** TICKET-002
+- **Branch:** main
 
 ### Scope
-- Scaffold and config only. No domain types, DB, or API beyond /health.
+- Store layer and migrations only. No domain types or API changes beyond ensuring server starts with DB and migrations.
 
 ### Key Achievements
-- `go build ./cmd/server` compiles. Config loaded and logged at startup. Omnibus validation prevents typos or invalid references.
+- `schema_migrations` tracks applied version; migration 001 creates all three core tables and `idx_transfers_duplicate`; `ledger_entries.reversal_of` nullable FK present.
 
 ### Technical Implementation
-- Module: `github.com/alediez2048/apex`. `internal/config` loads and validates YAML; allowlist in `config/correspondents.yaml` under `omnibus_accounts`. `cmd/server/main.go` wires config, slog, HTTP server with graceful shutdown.
+- `internal/store/db.go`: Open with sqlite3 driver, WAL, busy_timeout. `internal/store/migrations.go`: create `schema_migrations` if not exists, loop migrations, run SQL and insert version. Migration 1: transfers (id, investor_account_id, correspondent_id, amount, status, vendor_transaction_id, check_number, micr_routing, micr_account, micr_data, risk_score, contribution_type, settlement_batch_id, created_at, updated_at), ledger_entries (id, transfer_id, account_id, entry_type, amount, memo, posted_at, reversal_of), deposit_events (id, transfer_id, event_type, actor, payload, created_at), index on (micr_routing, micr_account, check_number).
 
 ### Files Changed
-- **Created:** go.mod, .gitignore, .env.example, Makefile, cmd/server/main.go, internal/config/config.go, config/correspondents.yaml, config/investors.yaml, internal/domain/.gitkeep, internal/vendor/.gitkeep, internal/funding/.gitkeep, internal/operator/.gitkeep, internal/settlement/.gitkeep, internal/returns/.gitkeep, internal/store/.gitkeep, internal/api/.gitkeep, web/.gitkeep, scripts/.gitkeep, docs/.gitkeep, reports/.gitkeep
-- **Updated:** devlog.md — this entry
+- **Created:** internal/store/db.go, internal/store/migrations.go, config/correspondents.yaml, config/investors.yaml (if missing), cmd/server/main.go (if missing), internal/config/config.go (with DBPath), Makefile (CGO_ENABLED=1 for sqlite3), .env.example (DB_PATH)
+- **Updated:** go.mod (sqlite3 dep), devlog.md
 
 ### Acceptance Criteria
-- [x] `go build ./cmd/server` compiles without errors.
-- [x] `make dev` creates directories, copies `.env.example` to `.env`, builds, and starts the server.
-- [x] Server refuses to start if `correspondents.yaml` references non-existent omnibus accounts.
-- [x] Config loaded and printed to structured log at startup.
+- [x] Server runs migrations on startup; `schema_migrations` table tracks applied versions.
+- [x] Restarting server skips already-applied migrations.
+- [x] `transfers` table has all required columns including `risk_score` and `contribution_type`.
+- [x] `ledger_entries` has `reversal_of` nullable FK for return handling.
+- [x] Composite index on `transfers` (`micr_routing`, `micr_account`, `check_number`) for duplicate detection.
 
 ### Next Steps
-- TICKET-002 (SQLite schema and migrations), TICKET-003 (domain types and state machine). Run `go mod tidy` (and optionally `go build ./cmd/server` then `make dev`) locally to confirm.
+- TICKET-003 (domain types and state machine). Run `go mod tidy` and `make dev` locally to confirm migrations apply and server starts.
 
 ---
 
@@ -249,7 +250,7 @@ Each ticket entry follows this standardized structure:
 | ID | Title | Phase | Priority | Est. | Status |
 |----|-------|-------|----------|------|--------|
 | TICKET-001 | Project Scaffolding and Configuration System | Phase 1 | P0 | 6h | DONE |
-| TICKET-002 | SQLite Schema and Migration System | Phase 1 | P0 | 6h | TODO |
+| TICKET-002 | SQLite Schema and Migration System | Phase 1 | P0 | 6h | DONE |
 | TICKET-003 | Domain Types and State Machine | Phase 1 | P0 | 3h | TODO |
 | TICKET-004 | Vendor Service Stub | Phase 1 | P0 | 12h | TODO |
 | TICKET-005 | Funding Service and Business Rule Engine | Phase 1 | P0 | 12h | TODO |

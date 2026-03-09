@@ -1,20 +1,21 @@
 # Binaries
 /bin/
 *.exe
-*.exe~
 *.dll
 *.so
 *.dylib
 
-# Go workspace
+# Go
 vendor/
 
-# Environment and secrets
+# Env and secrets
 .env
 *.local
 
 # Data and runtime
 /data/*.db
+/data/*.db-shm
+/data/*.db-wal
 /data/images/
 /reports/*.out
 /reports/*.txt
@@ -26,6 +27,6 @@ vendor/
 # IDE and OS
 .idea/
 .vscode/
+.DS_Store
 *.swp
 *.swo
-.DS_Store
