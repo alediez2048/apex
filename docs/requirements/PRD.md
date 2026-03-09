@@ -359,6 +359,8 @@ Every state transition triggers specific side effects. This table is the authori
 
 > **Invariant:** No ledger entries are ever created for transitions to Rejected. Ledger entries are only created at `Approved → FundsPosted` (posting) and `FundsPosted/Completed → Returned` (reversal). This guarantees that the ledger only contains financially meaningful records.
 
+### 7.5 Repository Layout
+
 The repository follows a domain-oriented package layout where directory structure directly mirrors the spec's service boundaries:
 
 ```
@@ -456,7 +458,7 @@ Requested ──→ Validating ──→ Analyzing ──→ Approved ──→ 
 | Rejected | Failed validation, business rules, or operator review | *(terminal)* |
 | Returned | Check bounced after settlement; reversal posted | *(terminal)* |
 
-> **Implementation note:** The `Approved` state must always be persisted as a discrete, logged transition — even for auto-approved deposits where the pipeline immediately continues to ledger posting. The transition sequence is always `Analyzing → Approved → FundsPosted`, never `Analyzing → FundsPosted` directly. This ensures the `transfer_state_log` / `deposit_events` audit trail is complete and that operators can distinguish auto-approved from operator-approved deposits by checking the actor field (`system` vs `operator:<id>`).
+> **Implementation note:** The `Approved` state must always be persisted as a discrete, logged transition — even for auto-approved deposits where the pipeline immediately continues to ledger posting. The transition sequence is always `Analyzing → Approved → FundsPosted`, never `Analyzing → FundsPosted` directly. This ensures the `deposit_events` audit trail is complete and that operators can distinguish auto-approved from operator-approved deposits by checking the actor field (`system` vs `operator:<id>`).
 
 ---
 
@@ -475,7 +477,7 @@ The leanest version that addresses all P0 requirements and achieves passing scor
 | M5: Operator Workflow | Embedded web UI with review queue, check image display, approve/reject controls, risk scoring, audit logging, and live benchmark dashboard cards | Operator Workflow (10 pts) |
 | M6: Settlement Engine | X9 JSON generator with hierarchical structure, EOD cutoff with injectable clock, business day rollover | Core Correctness (25 pts) |
 | M7: Return/Reversal | Return processing endpoint, synchronous reversal with fee deduction, notification event recording | Return Handling (10 pts) |
-| M8: Tests & Demo | 18+ tests (integration + unit), narrated demo script (6 acts), Makefile workflow, test report generation | Tests (10 pts) + DevEx (10 pts) |
+| M8: Tests & Demo | 20+ tests (integration + unit), narrated demo script (6 acts), Makefile workflow, test report generation | Tests (10 pts) + DevEx (10 pts) |
 | M9: Documentation | README, architecture.md, decision_log.md (10 ADRs), .env.example, SUBMISSION.md, risks/limitations | System Design (20 pts) + DevEx (10 pts) |
 
 ### Phase 2: V1.1 (Optimization)
@@ -545,7 +547,7 @@ Implement embedded forward-only migration runner with `schema_migrations` versio
 
 **Size:** S (< 0.5 day) | **Milestone:** M1 — Foundation
 
-Implement core domain types: `Amount` (int64 cents with `ToDollars`/`ParseAmount`), Transfer model, State enum with 8 values, and hardcoded transition map. State machine `Transition()` function validates transitions and logs to `transfer_state_log`. Structured error code taxonomy (`VENDOR.*`, `FUNDING.*`, `STATE.*`).
+Implement core domain types: `Amount` (int64 cents with `ToDollars`/`ParseAmount`), Transfer model, State enum with 8 values, and hardcoded transition map. State machine `Transition()` function validates transitions and logs to `deposit_events` (as `STATE_TRANSITION` event type). Structured error code taxonomy (`VENDOR.*`, `FUNDING.*`, `STATE.*`).
 
 **Acceptance Criteria:**
 - [ ] `Amount(15000).ToDollars()` returns `"$150.00"`.
@@ -623,7 +625,7 @@ Wire the vendor stub and funding service into a step function pipeline. Each ste
 
 **Size:** L (1–2 days) | **Milestone:** M4 — Pipeline
 
-Implement resource-oriented REST API with `/api/v1/` prefix. All endpoints per Section 7.4. Auth middleware validates Bearer tokens. Structured error responses per Section 7.5.
+Implement resource-oriented REST API with `/api/v1/` prefix. All endpoints per Section 7.6. Auth middleware validates Bearer tokens. Structured error responses per Section 7.7.
 
 **Acceptance Criteria:**
 - [ ] All endpoints return structured JSON with appropriate HTTP status codes.
@@ -649,6 +651,7 @@ Build embedded single-page web UI using vanilla HTML/CSS/JS compiled into the Go
 - [ ] Approve button posts to `/api/v1/operator/queue/{id}/approve` and updates UI.
 - [ ] Reject button prompts for reason before posting.
 - [ ] Contribution type dropdown shows INDIVIDUAL, EMPLOYER, ROLLOVER options.
+- [ ] Transfer detail page (`/transfers/:id`) displays the full per-deposit decision trace: deposit inputs, vendor response, business rules applied, operator actions (if any), and settlement status — sourced from `deposit_events`.
 
 ---
 
@@ -688,6 +691,7 @@ Both pairs are inserted within a single `BEGIN IMMEDIATE` transaction via two ca
 - [ ] Fee amount is exactly 3000 cents ($30.00).
 - [ ] Return on Requested deposit returns `STATE.INVALID_TRANSITION` error.
 - [ ] Post-reversal, ledger debits still equal credits (invariant preserved).
+- [ ] `INVESTOR_NOTIFIED` event payload includes: original amount, fee amount, net debit, reason code (e.g., NSF), and human-readable message.
 
 ---
 
@@ -709,7 +713,7 @@ Implement programmatic seed function that creates a complete demo-ready universe
 
 **Size:** XL (2–3 days) | **Milestone:** M8 — Tests & Demo
 
-Write 18+ tests: integration tests with real in-memory SQLite exercising the full HTTP API, plus unit tests for pure logic. Tests cover: happy path E2E, all 7 vendor scenarios, business rule enforcement, operator approve/reject, return/reversal with fee, settlement file contents, auth failures, ledger balance invariant, state machine transitions, amount parsing, and cutoff logic.
+Write 20+ tests: integration tests with real in-memory SQLite exercising the full HTTP API, plus unit tests for pure logic. Tests cover: happy path E2E, all 7 vendor scenarios, business rule enforcement, operator approve/reject, return/reversal with fee, settlement file contents and double-batching guard, auth failures, ledger balance invariant, state machine transitions, amount parsing, and cutoff logic.
 
 **Test Manifest:**
 
@@ -774,7 +778,9 @@ Write `README.md` (setup, architecture summary, how to demo, disclaimers), `docs
 - [ ] README includes copy-paste commands to run the system.
 - [ ] Decision log has 10 ADRs covering language, data store, vendor stub, settlement, state machine, currency, risk scoring, API, concurrency, and pipeline.
 - [ ] Architecture doc includes system diagram and data flow.
-- [ ] `SUBMISSION.md` follows the required format with all fields populated.
+- [ ] `SUBMISSION.md` includes all required fields: Project name, Summary (3-5 sentences), How to run (copy-paste commands), Test/eval results (with link to `/reports`), "With one more week, we would:", Risks and limitations, "How should ACME evaluate production readiness?"
+- [ ] Short write-up (<=1 page) covering architecture choices, vendor stub design, state machine rationale, and risks/limitations is included in `SUBMISSION.md` or as a dedicated section in the README.
+- [ ] `reports/` contains scenario coverage summary mapping which test exercised which system path.
 
 ---
 
@@ -800,7 +806,7 @@ Write `README.md` (setup, architecture summary, how to demo, disclaimers), `docs
 
 **C-2:** Setup: Must be achievable via a single command (`make dev` or `docker compose up`).
 
-**C-3:** Testing: Minimum 10 tests required (target: 18).
+**C-3:** Testing: Minimum 10 tests required (target: 20).
 
 **C-4:** Data: Secrets must use environment variables with `.env.example` provided.
 

@@ -80,8 +80,8 @@ On first startup, the system seeds itself with a realistic universe:
 
 | Entity | Count | Details |
 |---|---|---|
-| Correspondents | 3 | CORR-APEX ($5,000 limit), CORR-VANGUARD ($10,000 limit), CORR-FIDELITY ($3,000 limit) |
-| Investors | 4-6 | Mapped to magic account prefixes (PASS-, BLUR-, MICR-, DUP-, MISMATCH-, GLARE-) |
+| Correspondents | 3 | CORR-APEX ($5,000 limit), CORR-BETA ($3,000 limit), CORR-GAMMA ($7,500 limit) |
+| Investors | 6 | Mapped to magic account prefixes (PASS-, BLUR-, MICR-, DUP-, MISMATCH-, GLARE-) |
 | Pre-seeded deposits | 6+ | At least one deposit in each of: Completed, FundsPosted, Analyzing (flagged), Rejected, Returned |
 | Ledger entries | Balanced | All seeded deposits have correct double-entry postings |
 | Check images | Synthetic PNGs | Front/back images for every seeded deposit |
@@ -156,7 +156,8 @@ Investor submits check
         │ (settlement OK)          │ (check bounces)
         ▼                          ▼
    [Completed] ── terminal        [Returned] ── 4 reversal entries
-                                               + $30 fee
+        │                                      + $30 fee
+        └──────────────────────────▶ [Returned] (late return)
 ```
 
 ### 3.4 The Financial Invariant
@@ -232,8 +233,8 @@ This is enforced by:
 
 | File | Purpose | Demo Relevance |
 |---|---|---|
-| `docs/architecture.md` | System diagram, data flow, service boundaries | Supporting material for architecture walkthrough. |
-| `docs/decision_log.md` | 10 ADRs: language, data store, vendor stub, settlement, etc. | Show trade-off rationale (20 rubric points). |
+| `docs/architecture/architecture.md` | System diagram, data flow, service boundaries | Supporting material for architecture walkthrough. |
+| `docs/architecture/decision_log.md` | 10 ADRs: language, data store, vendor stub, settlement, etc. | Show trade-off rationale (20 rubric points). |
 | `SUBMISSION.md` | Summary, setup commands, eval results, risks/limitations | Required submission format. |
 
 ---
@@ -275,9 +276,9 @@ The automated demo (`make demo` / `scripts/demo.sh`) runs all 6 acts sequentiall
 
 | Scenario | Account | Expected Response | Expected State |
 |---|---|---|---|
-| Blurry image | `BLUR-10001` | `VENDOR.IQA_BLUR` (422) | Rejected |
-| Glare detected | `GLARE-10001` | `VENDOR.IQA_GLARE` (422) | Rejected |
-| Duplicate check | `DUP-10001` | `VENDOR.DUPLICATE` (409) | Rejected |
+| Blurry image | `BLUR-20001` | `VENDOR.IQA_BLUR` (422) | Rejected |
+| Glare detected | `GLARE-60001` | `VENDOR.IQA_GLARE` (422) | Rejected |
+| Duplicate check | `DUP-40001` | `VENDOR.DUPLICATE` (409) | Rejected |
 
 **Verification checks:**
 - [ ] Each scenario returns the correct structured error code
@@ -285,7 +286,7 @@ The automated demo (`make demo` / `scripts/demo.sh`) runs all 6 acts sequentiall
 - [ ] No ledger entries created for rejected deposits
 - [ ] Error messages are human-readable and actionable
 
-**Talking point:** *"The vendor stub is worth 15 points on the rubric. Each account prefix deterministically triggers a different failure. The tests are self-documenting — when you see `BLUR-10001`, you know exactly what will happen."*
+**Talking point:** *"The vendor stub is worth 15 points on the rubric. Each account prefix deterministically triggers a different failure. The tests are self-documenting — when you see `BLUR-20001`, you know exactly what will happen."*
 
 ---
 
@@ -319,8 +320,8 @@ The automated demo (`make demo` / `scripts/demo.sh`) runs all 6 acts sequentiall
 
 | Scenario | Account | Why Flagged | Operator Action |
 |---|---|---|---|
-| MICR read failure | `MICR-10001` | Confidence 0.42 (threshold 0.90) → risk score 65 (CRITICAL) | Approve with note |
-| Amount mismatch | `MISMATCH-10001` | OCR amount differs from entered amount | Reject with reason |
+| MICR read failure | `MICR-30001` | Confidence 0.42 (threshold 0.90) → risk score 65 (CRITICAL) | Approve with note |
+| Amount mismatch | `MISMATCH-50001` | OCR amount differs from entered amount | Reject with reason |
 
 **Web UI walkthrough:**
 1. Open `localhost:8080/operator`
