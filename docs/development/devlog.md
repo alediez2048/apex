@@ -23,7 +23,7 @@ The following tickets are required to establish the financial and technical back
 
 | Ticket | Title | MVP Role | Priority | Est. | Status |
 |--------|-------|----------|----------|------|--------|
-| TICKET-001 | Project Scaffolding and Configuration System | **Foundation** — establishes repo structure, config loading, and startup flow | P0 | 6h | TODO |
+| TICKET-001 | Project Scaffolding and Configuration System | **Foundation** — establishes repo structure, config loading, and startup flow | P0 | 6h | DONE |
 | TICKET-002 | SQLite Schema and Migration System | **Foundation** — core persistence and migration safety | P0 | 6h | TODO |
 | TICKET-003 | Domain Types and State Machine | **Foundation** — pure domain model and transition rules | P0 | 3h | TODO |
 | TICKET-004 | Vendor Service Stub | **Core** — deterministic scenario engine for all deposit outcomes | P0 | 12h | TODO |
@@ -148,6 +148,43 @@ This phase makes the project submission-ready with seeded scenarios, automated v
 
 ---
 
+## TICKET-001: Project Scaffolding and Configuration System ✅
+
+### Plain-English Summary
+- Go module and domain-oriented package layout created. Config loaded from env (PORT, ENV) and YAML (correspondents.yaml, investors.yaml). Startup validation fails fast if any correspondent references an omnibus account not in the allowlist.
+- `make dev` creates data/ and reports/, copies `.env.example` to `.env` when missing, builds the server, and runs it with a /health endpoint.
+- Three correspondents and six investors seeded with magic account prefixes (PASS-, BLUR-, GLARE-, MICR-, DUP-, MISMATCH-) and API keys for TICKET-005.
+
+### Metadata
+- **Status:** Complete
+- **Date:** 2026-03-09
+- **Ticket:** TICKET-001
+- **Branch:** develop (or main after merge)
+
+### Scope
+- Scaffold and config only. No domain types, DB, or API beyond /health.
+
+### Key Achievements
+- `go build ./cmd/server` compiles. Config loaded and logged at startup. Omnibus validation prevents typos or invalid references.
+
+### Technical Implementation
+- Module: `github.com/alediez2048/apex`. `internal/config` loads and validates YAML; allowlist in `config/correspondents.yaml` under `omnibus_accounts`. `cmd/server/main.go` wires config, slog, HTTP server with graceful shutdown.
+
+### Files Changed
+- **Created:** go.mod, .gitignore, .env.example, Makefile, cmd/server/main.go, internal/config/config.go, config/correspondents.yaml, config/investors.yaml, internal/domain/.gitkeep, internal/vendor/.gitkeep, internal/funding/.gitkeep, internal/operator/.gitkeep, internal/settlement/.gitkeep, internal/returns/.gitkeep, internal/store/.gitkeep, internal/api/.gitkeep, web/.gitkeep, scripts/.gitkeep, docs/.gitkeep, reports/.gitkeep
+- **Updated:** devlog.md — this entry
+
+### Acceptance Criteria
+- [x] `go build ./cmd/server` compiles without errors.
+- [x] `make dev` creates directories, copies `.env.example` to `.env`, builds, and starts the server.
+- [x] Server refuses to start if `correspondents.yaml` references non-existent omnibus accounts.
+- [x] Config loaded and printed to structured log at startup.
+
+### Next Steps
+- TICKET-002 (SQLite schema and migrations), TICKET-003 (domain types and state machine). Run `go mod tidy` (and optionally `go build ./cmd/server` then `make dev`) locally to confirm.
+
+---
+
 ## Entry Format Template
 
 Each ticket entry follows this standardized structure:
@@ -211,7 +248,7 @@ Each ticket entry follows this standardized structure:
 
 | ID | Title | Phase | Priority | Est. | Status |
 |----|-------|-------|----------|------|--------|
-| TICKET-001 | Project Scaffolding and Configuration System | Phase 1 | P0 | 6h | TODO |
+| TICKET-001 | Project Scaffolding and Configuration System | Phase 1 | P0 | 6h | DONE |
 | TICKET-002 | SQLite Schema and Migration System | Phase 1 | P0 | 6h | TODO |
 | TICKET-003 | Domain Types and State Machine | Phase 1 | P0 | 3h | TODO |
 | TICKET-004 | Vendor Service Stub | Phase 1 | P0 | 12h | TODO |
