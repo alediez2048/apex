@@ -1,0 +1,32 @@
+# Binaries
+/bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go
+vendor/
+
+# Env and secrets
+.env
+*.local
+
+# Data and runtime
+/data/*.db
+/data/*.db-shm
+/data/*.db-wal
+/data/images/
+/reports/*.out
+/reports/*.txt
+!reports/.gitkeep
+
+# Cursor / debug
+.cursor/
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo

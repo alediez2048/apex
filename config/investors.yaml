@@ -1,0 +1,31 @@
+investors:
+  - account_id: PASS-10001
+    api_key: tok_alice_001
+    correspondent_id: CORR-APEX
+    eligible: true
+    account_type: IRA
+  - account_id: BLUR-20001
+    api_key: tok_bob_002
+    correspondent_id: CORR-APEX
+    eligible: true
+    account_type: standard
+  - account_id: MICR-10001
+    api_key: tok_carol_003
+    correspondent_id: CORR-BETA
+    eligible: true
+    account_type: IRA
+  - account_id: DUP-30001
+    api_key: tok_dave_004
+    correspondent_id: CORR-APEX
+    eligible: false
+    account_type: standard
+  - account_id: MISMATCH-10001
+    api_key: tok_eve_005
+    correspondent_id: CORR-GAMMA
+    eligible: true
+    account_type: standard
+  - account_id: GLARE-20002
+    api_key: tok_frank_006
+    correspondent_id: CORR-BETA
+    eligible: true
+    account_type: standard
