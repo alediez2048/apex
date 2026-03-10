@@ -5,8 +5,8 @@
 *.so
 *.dylib
 
-# Go
-vendor/
+# Go — only root vendor/ from `go mod vendor` (do not ignore internal/vendor/)
+/vendor/
 
 # Env and secrets
 .env

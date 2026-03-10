@@ -26,7 +26,7 @@ The following tickets are required to establish the financial and technical back
 | TICKET-001 | Project Scaffolding and Configuration System | **Foundation** — establishes repo structure, config loading, and startup flow | P0 | 6h | DONE |
 | TICKET-002 | SQLite Schema and Migration System | **Foundation** — core persistence and migration safety | P0 | 6h | DONE |
 | TICKET-003 | Domain Types and State Machine | **Foundation** — pure domain model and transition rules | P0 | 3h | DONE |
-| TICKET-004 | Vendor Service Stub | **Core** — deterministic scenario engine for all deposit outcomes | P0 | 12h | TODO |
+| TICKET-004 | Vendor Service Stub | **Core** — deterministic scenario engine for all deposit outcomes | P0 | 12h | DONE |
 | TICKET-005 | Funding Service and Business Rule Engine | **Core** — auth, account resolution, limits, duplicates, contribution defaults | P0 | 12h | TODO |
 | TICKET-006 | Double-Entry Ledger Posting | **Core** — financial correctness and account balances | P0 | 6h | TODO |
 | TICKET-007 | Deposit Pipeline Orchestration | **Core** — wires validation, rules, actions, and event logging together | P0 | 6h | TODO |
@@ -224,6 +224,34 @@ This phase makes the project submission-ready with seeded scenarios, automated v
 
 ---
 
+## TICKET-004: Vendor Service Stub ✅
+
+### Plain-English Summary
+- `internal/vendor`: deterministic stub with 7 scenarios via account prefix (PASS-, BLUR-, GLARE-, MICR-, DUP-, MISMATCH-) and `X-Vendor-Scenario` header override. Returns outcome, domain error codes, confidence, MICR fields, txn id; mismatch returns OCR amount cents differing from entered.
+- `EnsureStubImages` writes `stub_front.png` / `stub_back.png` under `data/images/` at startup if missing.
+- `POST /api/v1/vendor/validate` JSON `{account_id, amount_cents}` for manual/demo; optional header `X-Vendor-Scenario` with values CLEAN_PASS, IQA_BLUR, IQA_GLARE, MICR_FAILURE, DUPLICATE, AMOUNT_MISMATCH.
+
+### Metadata
+- **Status:** Complete
+- **Date:** 2026-03-09
+- **Ticket:** TICKET-004
+- **Branch:** main
+
+### Acceptance Criteria
+- [x] PASS-* CLEAN_PASS, confidence >= 0.95, MICR data
+- [x] BLUR-* IQA_FAIL_BLUR + VENDOR.IQA_BLUR
+- [x] GLARE-* IQA_FAIL_GLARE
+- [x] MICR-* MICR_READ_FAILURE, confidence 0.42
+- [x] DUP-* DUPLICATE_DETECTED
+- [x] MISMATCH-* AMOUNT_MISMATCH, OCR amount differs
+- [x] X-Vendor-Scenario overrides prefix
+- [x] Synthetic PNGs in data/images/
+
+### Next Steps
+- TICKET-005 (Funding Service and business rules).
+
+---
+
 ## Entry Format Template
 
 Each ticket entry follows this standardized structure:
@@ -290,7 +318,7 @@ Each ticket entry follows this standardized structure:
 | TICKET-001 | Project Scaffolding and Configuration System | Phase 1 | P0 | 6h | DONE |
 | TICKET-002 | SQLite Schema and Migration System | Phase 1 | P0 | 6h | DONE |
 | TICKET-003 | Domain Types and State Machine | Phase 1 | P0 | 3h | DONE |
-| TICKET-004 | Vendor Service Stub | Phase 1 | P0 | 12h | TODO |
+| TICKET-004 | Vendor Service Stub | Phase 1 | P0 | 12h | DONE |
 | TICKET-005 | Funding Service and Business Rule Engine | Phase 1 | P0 | 12h | TODO |
 | TICKET-006 | Double-Entry Ledger Posting | Phase 1 | P0 | 6h | TODO |
 | TICKET-007 | Deposit Pipeline Orchestration | Phase 1 | P0 | 6h | TODO |
