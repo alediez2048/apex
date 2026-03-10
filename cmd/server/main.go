@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/alediez2048/apex/internal/config"
 	"github.com/alediez2048/apex/internal/store"
+	"github.com/alediez2048/apex/internal/vendor"
 )
 
 func main() {
@@ -39,7 +41,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := vendor.EnsureStubImages("data/images"); err != nil {
+		slog.Error("stub images failed", "error", err)
+		os.Exit(1)
+	}
+
+	vs := vendor.NewStub()
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/vendor/validate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			AccountID   string `json:"account_id"`
+			AmountCents int64  `json:"amount_cents"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+		resp := vs.Validate(vendor.Request{AccountID: body.AccountID, AmountCents: body.AmountCents}, r.Header.Get(vendor.HeaderScenario))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
