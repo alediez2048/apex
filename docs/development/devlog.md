@@ -25,7 +25,7 @@ The following tickets are required to establish the financial and technical back
 |--------|-------|----------|----------|------|--------|
 | TICKET-001 | Project Scaffolding and Configuration System | **Foundation** — establishes repo structure, config loading, and startup flow | P0 | 6h | DONE |
 | TICKET-002 | SQLite Schema and Migration System | **Foundation** — core persistence and migration safety | P0 | 6h | DONE |
-| TICKET-003 | Domain Types and State Machine | **Foundation** — pure domain model and transition rules | P0 | 3h | TODO |
+| TICKET-003 | Domain Types and State Machine | **Foundation** — pure domain model and transition rules | P0 | 3h | DONE |
 | TICKET-004 | Vendor Service Stub | **Core** — deterministic scenario engine for all deposit outcomes | P0 | 12h | TODO |
 | TICKET-005 | Funding Service and Business Rule Engine | **Core** — auth, account resolution, limits, duplicates, contribution defaults | P0 | 12h | TODO |
 | TICKET-006 | Double-Entry Ledger Posting | **Core** — financial correctness and account balances | P0 | 6h | TODO |
@@ -182,7 +182,45 @@ This phase makes the project submission-ready with seeded scenarios, automated v
 - [x] Composite index on `transfers` (`micr_routing`, `micr_account`, `check_number`) for duplicate detection.
 
 ### Next Steps
-- TICKET-003 (domain types and state machine). Run `go mod tidy` and `make dev` locally to confirm migrations apply and server starts.
+- TICKET-003 (domain types and state machine).
+
+---
+
+## TICKET-003: Domain Types and State Machine ✅
+
+### Plain-English Summary
+- Added `internal/domain`: `Amount` (int64 cents) with `ToDollars()` and `ParseAmount()`; 8-state enum and hardcoded transition map; `Transition(from, to State)` returns `ErrInvalidTransition` (code `STATE.INVALID_TRANSITION`) for invalid moves; structured `DomainError` with `Code()` for API use.
+- Unit tests cover Amount formatting/parsing (including fractional-cents rejection) and all valid/invalid state transitions.
+
+### Metadata
+- **Status:** Complete
+- **Date:** 2026-03-09
+- **Ticket:** TICKET-003
+- **Branch:** develop
+
+### Scope
+- Pure domain types and state machine only. No DB or API wiring. `Transition()` validates only; callers persist STATE_TRANSITION to `deposit_events` in TICKET-007.
+- Extended after review: Transfer model, full VENDOR./FUNDING./SETTLEMENT./SYSTEM. code constants, `ValidTransitions` returns a copy, `ReturnFeeCents`, `StateTransitionPayload` for event payloads.
+
+### Key Achievements
+- `Transition(Requested, Completed)` returns `STATE.INVALID_TRANSITION`; all PRD-valid transitions succeed in tests; `ParseAmount("150.001")` returns error.
+
+### Technical Implementation
+- `amount.go`: `Amount` type, `ToDollars()`, `ParseAmount()` (rejects fractional cents). `state.go`: `State` constants, `validTransitions` map, `Transition()`, `ValidTransitions()`. `errors.go`: `DomainError` (ErrCode, Message), `Code()`, `ErrInvalidTransition`. Tests: `amount_test.go`, `state_test.go`.
+
+### Files Changed
+- **Created:** internal/domain/amount.go, internal/domain/state.go, internal/domain/errors.go, internal/domain/amount_test.go, internal/domain/state_test.go
+- **Updated:** docs/development/devlog.md
+
+### Acceptance Criteria
+- [x] `Amount(15000).ToDollars()` returns `"$150.00"`.
+- [x] `ParseAmount("150.00")` returns `Amount(15000)`.
+- [x] `ParseAmount("150.001")` returns error (fractional cents).
+- [x] `Transition(Requested, Completed)` returns `STATE.INVALID_TRANSITION` error.
+- [x] All valid transitions succeed; all invalid transitions fail. Covered by unit tests.
+
+### Next Steps
+- TICKET-004 (Vendor Service Stub).
 
 ---
 
@@ -251,7 +289,7 @@ Each ticket entry follows this standardized structure:
 |----|-------|-------|----------|------|--------|
 | TICKET-001 | Project Scaffolding and Configuration System | Phase 1 | P0 | 6h | DONE |
 | TICKET-002 | SQLite Schema and Migration System | Phase 1 | P0 | 6h | DONE |
-| TICKET-003 | Domain Types and State Machine | Phase 1 | P0 | 3h | TODO |
+| TICKET-003 | Domain Types and State Machine | Phase 1 | P0 | 3h | DONE |
 | TICKET-004 | Vendor Service Stub | Phase 1 | P0 | 12h | TODO |
 | TICKET-005 | Funding Service and Business Rule Engine | Phase 1 | P0 | 12h | TODO |
 | TICKET-006 | Double-Entry Ledger Posting | Phase 1 | P0 | 6h | TODO |

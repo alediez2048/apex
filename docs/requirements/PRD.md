@@ -806,7 +806,7 @@ Write `README.md` (setup, architecture summary, how to demo, disclaimers), `docs
 
 **C-2:** Setup: Must be achievable via a single command (`make dev` or `docker compose up`).
 
-**C-3:** Testing: Minimum 10 tests required (target: 20).
+**C-3:** Testing: Minimum 10 tests required (target: 20+).
 
 **C-4:** Data: Secrets must use environment variables with `.env.example` provided.
 
@@ -837,7 +837,7 @@ This matrix maps every evaluation rubric category to the specific PRD sections, 
 | Vendor Stub Quality | 15 | Sec 5.1 (FR-02), Sec 4.1 (US-02) | TICKET-004 | 7 scenario tests, header override test |
 | Operator Workflow | 10 | Sec 5.1 (FR-10), Sec 5.2 (FR-11, 13, 14) | TICKET-009 | Approve/reject tests, audit log verification |
 | Return/Reversal | 10 | Sec 5.1 (FR-09), Sec 6.3 (Return Flow) | TICKET-011 | Reversal + fee test (4 entries / 2 balanced pairs), ledger balance post-reversal, return on Completed |
-| Tests & Evaluation | 10 | Sec 3 (KPIs), Sec 9 (Tickets) | TICKET-013, 014 | 20 tests, demo script, coverage report |
+| Tests & Evaluation | 10 | Sec 3 (KPIs), Sec 9 (Tickets) | TICKET-013, 014 | 20+ tests, demo script, coverage report |
 | Developer Experience | 10 | Sec 8 (Phasing), Sec 9 (Tickets) | TICKET-014, 015 | `make dev`, `make demo`, `make demo-full`, `make report` all succeed |
 
 ---
