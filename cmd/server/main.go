@@ -9,7 +9,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/alediez2048/apex/internal/api"
 	"github.com/alediez2048/apex/internal/config"
+	"github.com/alediez2048/apex/internal/funding"
+	"github.com/alediez2048/apex/internal/pipeline"
 	"github.com/alediez2048/apex/internal/store"
 	"github.com/alediez2048/apex/internal/vendor"
 )
@@ -47,10 +50,23 @@ func main() {
 	}
 
 	vs := vendor.NewStub()
+	dup := &funding.SQLDuplicateChecker{DB: db}
+	fundingEngine := funding.NewEngine(cfg, dup)
+	pipeDeps := pipeline.Deps{DB: db, VendorStub: vs, FundingEngine: fundingEngine}
+
 	mux := http.NewServeMux()
+
+	// Deposits: list/create/get/history/images
+	mux.HandleFunc("/api/v1/deposits/", api.DepositsHandler(cfg, db, pipeDeps))
+	mux.HandleFunc("/api/v1/deposits", api.DepositsHandler(cfg, db, pipeDeps))
+
+	// Funding validation (standalone, from TICKET-005)
+	mux.HandleFunc("/api/v1/deposits/validate", funding.Handler(fundingEngine))
+
+	// Vendor validation (standalone)
 	mux.HandleFunc("/api/v1/vendor/validate", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			api.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", "", nil)
 			return
 		}
 		var body struct {
@@ -58,13 +74,28 @@ func main() {
 			AmountCents int64  `json:"amount_cents"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, "invalid json", http.StatusBadRequest)
+			api.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON", "", nil)
 			return
 		}
 		resp := vs.Validate(vendor.Request{AccountID: body.AccountID, AmountCents: body.AmountCents}, r.Header.Get(vendor.HeaderScenario))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	})
+
+	// Operator queue: list/approve/reject
+	mux.HandleFunc("/api/v1/operator/", api.OperatorHandler(cfg, pipeDeps))
+
+	// Accounts: balance/ledger
+	mux.HandleFunc("/api/v1/accounts/", api.AccountsHandler(cfg, db))
+
+	// Settlement stubs (TICKET-010)
+	mux.HandleFunc("/api/v1/settlement/", api.SettlementHandler(cfg))
+
+	// Returns stubs (TICKET-011)
+	mux.HandleFunc("/api/v1/returns/", api.ReturnsHandler(cfg))
+	mux.HandleFunc("/api/v1/returns", api.ReturnsHandler(cfg))
+
+	// Health and root
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -79,6 +110,16 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+
+	slog.Info("routes registered",
+		"deposits", "/api/v1/deposits",
+		"deposits_validate", "/api/v1/deposits/validate",
+		"vendor_validate", "/api/v1/vendor/validate",
+		"operator_queue", "/api/v1/operator/queue",
+		"accounts", "/api/v1/accounts/{id}",
+		"settlement", "/api/v1/settlement/*",
+		"returns", "/api/v1/returns/*",
+	)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

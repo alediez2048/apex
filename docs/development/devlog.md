@@ -27,10 +27,10 @@ The following tickets are required to establish the financial and technical back
 | TICKET-002 | SQLite Schema and Migration System | **Foundation** — core persistence and migration safety | P0 | 6h | DONE |
 | TICKET-003 | Domain Types and State Machine | **Foundation** — pure domain model and transition rules | P0 | 3h | DONE |
 | TICKET-004 | Vendor Service Stub | **Core** — deterministic scenario engine for all deposit outcomes | P0 | 12h | DONE |
-| TICKET-005 | Funding Service and Business Rule Engine | **Core** — auth, account resolution, limits, duplicates, contribution defaults | P0 | 12h | TODO |
-| TICKET-006 | Double-Entry Ledger Posting | **Core** — financial correctness and account balances | P0 | 6h | TODO |
-| TICKET-007 | Deposit Pipeline Orchestration | **Core** — wires validation, rules, actions, and event logging together | P0 | 6h | TODO |
-| TICKET-008 | REST API Layer | **Core** — submission, status, queue, settlement, and return endpoints | P0 | 12h | TODO |
+| TICKET-005 | Funding Service and Business Rule Engine | **Core** — auth, account resolution, limits, duplicates, contribution defaults | P0 | 12h | DONE |
+| TICKET-006 | Double-Entry Ledger Posting | **Core** — financial correctness and account balances | P0 | 6h | DONE |
+| TICKET-007 | Deposit Pipeline Orchestration | **Core** — wires validation, rules, actions, and event logging together | P0 | 6h | DONE |
+| TICKET-008 | REST API Layer | **Core** — submission, status, queue, settlement, and return endpoints | P0 | 12h | DONE |
 
 ### Phase 1 Dependencies
 
@@ -248,7 +248,129 @@ This phase makes the project submission-ready with seeded scenarios, automated v
 - [x] Synthetic PNGs in data/images/
 
 ### Next Steps
-- TICKET-005 (Funding Service and business rules).
+- TICKET-005 (Funding Service and business rules) — done below.
+
+---
+
+## TICKET-005: Funding Service and Business Rule Engine ✅
+
+### Plain-English Summary
+- `internal/funding`: **Engine** resolves investor by static API key (`Bearer` token), maps to correspondent + omnibus from YAML-backed config, enforces per-correspondent deposit limit, eligibility, and 30-day composite duplicate check (MICR routing + account + check # + amount).
+- **DuplicateChecker**: in-memory for unit tests; **SQLDuplicateChecker** queries `transfers` so duplicates persist across restarts once TICKET-007 inserts rows.
+- **HTTP**: `POST /api/v1/deposits/validate` — JSON `amount_cents`, optional `micr_routing`, `micr_account`, `check_number`; **401** + `FUNDING.ACCOUNT_NOT_FOUND` for missing/invalid key; **403** + `FUNDING.INELIGIBLE` for ineligible investor (e.g. Dave Wilson / `tok_dave_004`); **422** + `FUNDING.OVER_LIMIT` / `FUNDING.DUPLICATE` for rule failures; success JSON includes `omnibus_account_id` and `contribution_type` (IRA → correspondent default, e.g. INDIVIDUAL for CORR-APEX).
+
+### Metadata
+- **Status:** Complete
+- **Date:** 2026-03-09
+- **Ticket:** TICKET-005
+- **Branch:** main
+
+### Acceptance Criteria
+- [x] Invalid/missing API key → 401 structured error (`FUNDING.ACCOUNT_NOT_FOUND`)
+- [x] Ineligible investor (Dave Wilson) → 403 (`FUNDING.INELIGIBLE`)
+- [x] $6,000 vs CORR-APEX $5,000 limit → `FUNDING.OVER_LIMIT`
+- [x] Same check twice within 30 days → `FUNDING.DUPLICATE` (memory checker in tests; SQL checker when rows exist)
+- [x] IRA → INDIVIDUAL from CORR-APEX config
+- [x] Omnibus `OMNI-APEX-001` for CORR-APEX
+
+### Next Steps
+- TICKET-006 (Double-Entry Ledger Posting) — done below.
+
+---
+
+## TICKET-006: Double-Entry Ledger Posting ✅
+
+### Plain-English Summary
+- `internal/ledger`: **Post()** creates exactly one DEBIT and one CREDIT of equal amount in a single `BEGIN IMMEDIATE` transaction (explicit SQLite write lock). Uses `crypto/rand` for unique entry IDs (`le-` prefix + 32-char hex).
+- **Balance()** returns per-account net balance via `SUM(CASE WHEN CREDIT THEN amount ELSE -amount END)`, returning 0 for accounts with no entries.
+- Semantics match PRD §7.4: DEBIT on omnibus (from), CREDIT on investor (to). Memo defaults to `"FREE"`. TICKET-007 will wire this into the pipeline at the Approved → FundsPosted transition.
+
+### Metadata
+- **Status:** Complete
+- **Date:** 2026-03-10
+- **Ticket:** TICKET-006
+- **Branch:** main
+
+### Acceptance Criteria
+- [x] Every posting creates exactly one DEBIT and one CREDIT of equal amounts
+- [x] Both entries created in same DB transaction (BEGIN IMMEDIATE)
+- [x] Balance query (SUM of credits minus debits) returns correct account balance
+- [x] `TestLedgerInvariant`: sum of all DEBITs == sum of all CREDITs across all accounts
+
+### Next Steps
+- TICKET-007 (Deposit Pipeline Orchestration) — done below.
+
+---
+
+## TICKET-007: Deposit Pipeline Orchestration ✅
+
+### Plain-English Summary
+- **Pipeline runner** (`internal/pipeline/runner.go`): step-function orchestrator that takes a Requested transfer through vendor validation (step 1), funding rules (step 2), and ledger posting (step 3). Each step persists state transitions and logs to `deposit_events`.
+- **Three flows implemented:** Clean (PASS-* → FundsPosted), BLUR/GLARE/DUP (→ Rejected at step 1), MICR (→ Analyzing, flagged for operator review when confidence < 0.9).
+- **Store layer** (`internal/store/transfers.go`, `events.go`): CreateTransfer, UpdateTransferStatus, UpdateTransferVendor, GetTransfer, InsertEvent, ListEvents.
+- **Risk scoring** (`internal/pipeline/risk.go`): single-signal MVP — confidence >= 0.9 → score 0 (LOW, auto-approve), < 0.9 → score 65 (CRITICAL, flagged).
+- **HTTP** (`POST /api/v1/deposits`): accepts `{account_id, amount_cents}` with Bearer token, creates transfer, runs pipeline, returns `{transfer_id, status, action, reason}`. 201 on success/flagged, 422 on rejection.
+- **Approved always persisted**: even auto-approved deposits log Analyzing → Approved (actor=system) before Approved → FundsPosted.
+
+### Metadata
+- **Status:** Complete
+- **Date:** 2026-03-10
+- **Ticket:** TICKET-007
+- **Branch:** main
+
+### Acceptance Criteria
+- [x] Clean deposit flows: Requested → Validating → Analyzing → Approved → FundsPosted
+- [x] BLUR deposit flows: Requested → Validating → Rejected (pipeline halts at step 1)
+- [x] MICR failure flows: Requested → Validating → Analyzing (flagged, needs review)
+- [x] Each pipeline step logged as `deposit_event` with step index and action
+- [x] Auto-approved deposits have actor=`system` on the Analyzing→Approved transition
+
+### Next Steps
+- TICKET-008 (REST API Layer) for full endpoint coverage.
+
+---
+
+## TICKET-008: REST API Layer ✅
+
+### Plain-English Summary
+- Implemented the full REST API surface per PRD §7.6: auth middleware, structured error responses, all deposit endpoints (list, get, create, history, images), operator queue with approve/reject, account balance/ledger, and stub endpoints for settlement and returns.
+- Created shared `internal/api` package with `WriteJSON`, `WriteError`, `WriteDomainError`, and `RequireAuth` helpers. All error responses follow the `{code, message, transfer_id, details}` schema from PRD §7.7.
+- Auth middleware validates Bearer tokens against configured investor API keys; rejects invalid/missing tokens with 401 and structured JSON.
+- Operator approve flow (`OperatorApprove`) transitions Analyzing → Approved → FundsPosted with actor=`operator:{id}` and performs ledger posting. Reject flow transitions to Rejected with reason.
+- Image endpoint serves per-transfer images from `data/images/{id}/front.png` (or back), falling back to stub images.
+- Settlement and returns endpoints return 501 Not Implemented with structured error bodies (TICKET-010 / TICKET-011).
+- Added `ListTransfers` (with status/account/from/to filters) and `ListLedgerEntriesByAccount` store functions.
+- Refactored `cmd/server/main.go` to use centralized handlers — removed inline `depositHandler`, `writeJSON`, `bearerToken`, `newTransferID` from main.
+
+### Metadata
+- **Status:** Complete
+- **Date:** 2026-03-10
+- **Ticket:** TICKET-008
+- **Branch:** main
+
+### Acceptance Criteria
+- [x] All endpoints return structured JSON with appropriate HTTP status codes
+- [x] Error responses include `code`, `message`, `transfer_id`, and `details` fields
+- [x] Auth middleware rejects requests without valid Bearer token (401)
+- [x] Image endpoint serves check images via file serving (stub fallback)
+- [x] Operator queue supports `?status=`, `?account=`, `?from=`, `?to=` query filters
+
+### Files Changed
+- **Created:** `internal/api/response.go` — shared WriteJSON, WriteError, WriteDomainError, RequireAuth, BearerToken
+- **Created:** `internal/api/deposits.go` — DepositsHandler (list/create/get/history/images)
+- **Created:** `internal/api/operator.go` — OperatorHandler (queue list/approve/reject)
+- **Created:** `internal/api/accounts.go` — AccountsHandler (balance/ledger)
+- **Created:** `internal/api/stubs.go` — SettlementHandler, ReturnsHandler (501 stubs)
+- **Created:** `internal/api/api_test.go` — 18 tests covering auth, errors, all endpoints
+- **Created:** `internal/pipeline/operator.go` — OperatorApprove, OperatorReject
+- **Created:** `internal/store/ledger_entries.go` — ListLedgerEntriesByAccount
+- **Modified:** `internal/store/transfers.go` — added TransferFilters, ListTransfers
+- **Modified:** `cmd/server/main.go` — rewired to use api package handlers
+- **Updated:** `docs/requirements/PRD.md` — checked off TICKET-008 acceptance criteria
+- **Updated:** `docs/development/devlog.md` — this entry
+
+### Next Steps
+- TICKET-009 (Operator Web UI) for embedded single-page operator interface.
 
 ---
 
@@ -319,10 +441,10 @@ Each ticket entry follows this standardized structure:
 | TICKET-002 | SQLite Schema and Migration System | Phase 1 | P0 | 6h | DONE |
 | TICKET-003 | Domain Types and State Machine | Phase 1 | P0 | 3h | DONE |
 | TICKET-004 | Vendor Service Stub | Phase 1 | P0 | 12h | DONE |
-| TICKET-005 | Funding Service and Business Rule Engine | Phase 1 | P0 | 12h | TODO |
-| TICKET-006 | Double-Entry Ledger Posting | Phase 1 | P0 | 6h | TODO |
-| TICKET-007 | Deposit Pipeline Orchestration | Phase 1 | P0 | 6h | TODO |
-| TICKET-008 | REST API Layer | Phase 1 | P0 | 12h | TODO |
+| TICKET-005 | Funding Service and Business Rule Engine | Phase 1 | P0 | 12h | DONE |
+| TICKET-006 | Double-Entry Ledger Posting | Phase 1 | P0 | 6h | DONE |
+| TICKET-007 | Deposit Pipeline Orchestration | Phase 1 | P0 | 6h | DONE |
+| TICKET-008 | REST API Layer | Phase 1 | P0 | 12h | DONE |
 | TICKET-009 | Operator Web UI | Phase 2 | P0 | 12h | TODO |
 | TICKET-010 | Settlement Engine | Phase 2 | P0 | 12h | TODO |
 | TICKET-011 | Return/Reversal Processing | Phase 2 | P0 | 6h | TODO |
