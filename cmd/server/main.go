@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/alediez2048/apex/internal/api"
@@ -16,6 +19,9 @@ import (
 	"github.com/alediez2048/apex/internal/store"
 	"github.com/alediez2048/apex/internal/vendor"
 )
+
+//go:embed web/index.html web/app.js web/style.css
+var webFS embed.FS
 
 func main() {
 	cfg, err := config.Load()
@@ -95,21 +101,27 @@ func main() {
 	mux.HandleFunc("/api/v1/returns/", api.ReturnsHandler(cfg))
 	mux.HandleFunc("/api/v1/returns", api.ReturnsHandler(cfg))
 
-	// Health and root
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("Mobile Check Deposit — use /health for health check.\n"))
-	})
+	// Stats for dashboard (TICKET-009)
+	mux.HandleFunc("/api/v1/stats/dashboard", api.StatsHandler(cfg, db))
+
+	// Health
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+
+	// Embedded web UI (TICKET-009): SPA and static assets.
+	// Go's ServeMux matches "/" only for exact path "/"; register each route explicitly.
+	webRoot, _ := fs.Sub(webFS, "web")
+	wh := webHandler(cfg, webRoot)
+	mux.HandleFunc("/", wh)
+	mux.HandleFunc("/submit", wh)
+	mux.HandleFunc("/operator", wh)
+	mux.HandleFunc("/operator/", wh)
+	mux.HandleFunc("/transfers/", wh)
+	mux.HandleFunc("/app.js", wh)
+	mux.HandleFunc("/style.css", wh)
 
 	slog.Info("routes registered",
 		"deposits", "/api/v1/deposits",
@@ -143,4 +155,48 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("server stopped")
+}
+
+// webHandler serves the embedded SPA and static assets; injects demo API key into index.html.
+func webHandler(cfg *config.Config, webRoot fs.FS) http.HandlerFunc {
+	demoKey := ""
+	if len(cfg.Investors) > 0 {
+		demoKey = cfg.Investors[0].APIKey
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		path = strings.TrimSuffix(path, "/") // so /operator/ and /operator both work
+		// SPA routes: serve index.html with key injected
+		isAppRoute := path == "" || path == "submit" || path == "operator" ||
+			strings.HasPrefix(path, "transfers/")
+		if isAppRoute {
+			index, err := fs.ReadFile(webRoot, "index.html")
+			if err != nil {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			html := strings.ReplaceAll(string(index), "__DEMO_API_KEY__", demoKey)
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(html))
+			return
+		}
+		// Static assets
+		if path == "app.js" || path == "style.css" {
+			data, err := fs.ReadFile(webRoot, path)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			if path == "app.js" {
+				w.Header().Set("Content-Type", "application/javascript")
+			} else {
+				w.Header().Set("Content-Type", "text/css")
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(data)
+			return
+		}
+		http.NotFound(w, r)
+	}
 }

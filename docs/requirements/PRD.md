@@ -643,15 +643,15 @@ Implement resource-oriented REST API with `/api/v1/` prefix. All endpoints per S
 Build embedded single-page web UI using vanilla HTML/CSS/JS compiled into the Go binary via `go:embed`. Pages: dashboard (`/`), deposit submission form (`/submit`), operator review queue (`/operator`), transfer detail (`/transfers/:id`). The dashboard displays live benchmark cards for core KPIs, and the operator queue displays risk scores, check images, MICR data, and approve/reject buttons with contribution type override dropdown.
 
 **Acceptance Criteria:**
-- [ ] Opening `localhost:8080/` shows benchmark cards for gating correctness, settlement reconciliation, vendor scenario coverage, queue latency, return accuracy, and deposit counts by state.
-- [ ] Benchmark cards refresh after deposit submission, operator approval/rejection, settlement batch generation, and return processing.
-- [ ] Benchmark values are derived from live system state and/or latest test/demo run artifacts, not hardcoded text.
-- [ ] Opening `localhost:8080/operator` shows flagged deposits sorted by risk score (highest first).
-- [ ] Each queue item displays: risk score badge, amount, account, check images, MICR data.
-- [ ] Approve button posts to `/api/v1/operator/queue/{id}/approve` and updates UI.
-- [ ] Reject button prompts for reason before posting.
-- [ ] Contribution type dropdown shows INDIVIDUAL, EMPLOYER, ROLLOVER options.
-- [ ] Transfer detail page (`/transfers/:id`) displays the full per-deposit decision trace: deposit inputs, vendor response, business rules applied, operator actions (if any), and settlement status — sourced from `deposit_events`.
+- [x] Opening `localhost:8080/` shows benchmark cards for gating correctness, settlement reconciliation, vendor scenario coverage, queue latency, return accuracy, and deposit counts by state.
+- [x] Benchmark cards refresh after deposit submission, operator approval/rejection, settlement batch generation, and return processing.
+- [x] Benchmark values are derived from live system state and/or latest test/demo run artifacts, not hardcoded text.
+- [x] Opening `localhost:8080/operator` shows flagged deposits sorted by risk score (highest first).
+- [x] Each queue item displays: risk score badge, amount, account, check images, MICR data.
+- [x] Approve button posts to `/api/v1/operator/queue/{id}/approve` and updates UI.
+- [x] Reject button prompts for reason before posting.
+- [x] Contribution type dropdown shows INDIVIDUAL, EMPLOYER, ROLLOVER options.
+- [x] Transfer detail page (`/transfers/:id`) displays the full per-deposit decision trace: deposit inputs, vendor response, business rules applied, operator actions (if any), and settlement status — sourced from `deposit_events`.
 
 ---
 

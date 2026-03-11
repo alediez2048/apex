@@ -237,6 +237,12 @@ func transferToJSON(t *domain.Transfer) map[string]interface{} {
 	if t.SettlementBatchID != "" {
 		m["settlement_batch_id"] = t.SettlementBatchID
 	}
+	if t.MICRRouting != "" {
+		m["micr_routing"] = t.MICRRouting
+	}
+	if t.MICRAccount != "" {
+		m["micr_account"] = t.MICRAccount
+	}
 	return m
 }
 

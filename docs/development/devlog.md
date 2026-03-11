@@ -48,7 +48,7 @@ This phase turns the processing engine into a full end-to-end product by adding 
 
 | Ticket | Title | Phase Role | Priority | Est. | Status |
 |--------|-------|------------|----------|------|--------|
-| TICKET-009 | Operator Web UI | **Operations** — manual review queue, risk triage, and operator actions | P0 | 12h | TODO |
+| TICKET-009 | Operator Web UI | **Operations** — manual review queue, risk triage, and operator actions | P0 | 12h | DONE |
 | TICKET-010 | Settlement Engine | **Settlement** — X9-style structured JSON, batching, cutoff, and rollover | P0 | 12h | TODO |
 | TICKET-011 | Return/Reversal Processing | **Financial Recovery** — bounced check reversals and fee application | P0 | 6h | TODO |
 
@@ -374,6 +374,46 @@ This phase makes the project submission-ready with seeded scenarios, automated v
 
 ---
 
+## TICKET-009: Operator Web UI ✅
+
+### Plain-English Summary
+- Embedded single-page web UI (vanilla HTML/CSS/JS) via `go:embed` in the Go binary. Routes: dashboard (`/`), deposit submission (`/submit`), operator queue (`/operator`), transfer detail (`/transfers/:id`).
+- **Dashboard:** `GET /api/v1/stats/dashboard` returns deposit counts by state and KPI placeholders; UI renders benchmark cards and refreshes on button or after submit/approve/reject.
+- **Submit:** Form POSTs to `POST /api/v1/deposits` with Bearer token (demo key injected by server from first investor).
+- **Operator queue:** Fetches `GET /api/v1/operator/queue`; items sorted by risk score (highest first); each shows risk badge, amount, account, MICR data, check images (fetched with Bearer → blob URL). Approve (with optional contribution type INDIVIDUAL/EMPLOYER/ROLLOVER) and Reject (prompt for reason) post to existing APIs and refresh list.
+- **Transfer detail:** Fetches deposit + history; renders decision trace from `deposit_events`.
+- **Approve API:** Extended to accept optional `contribution_type` in body; `OperatorApprove` calls `UpdateTransferContribution` when provided.
+- UI uses demo API key injected into index.html (first investor key); operator ID in sessionStorage and sent as `X-Operator-ID` on approve/reject.
+
+### Metadata
+- **Status:** Complete
+- **Date:** 2026-03-10
+- **Ticket:** TICKET-009
+- **Branch:** main
+
+### Acceptance Criteria
+- [x] Dashboard shows benchmark cards and deposit counts by state
+- [x] Benchmark cards refresh after submit/approve/reject (Refresh button + refresh on success)
+- [x] Values from live system (stats API)
+- [x] Operator queue: flagged deposits sorted by risk score (highest first)
+- [x] Queue item: risk badge, amount, account, check images, MICR data
+- [x] Approve/Reject post to API and update UI; contribution type dropdown (INDIVIDUAL, EMPLOYER, ROLLOVER)
+- [x] Transfer detail: full decision trace from deposit_events
+
+### Files Changed
+- **Created:** `internal/api/stats.go` — GET /api/v1/stats/dashboard
+- **Created:** `cmd/server/web/index.html`, `app.js`, `style.css` — SPA and styles
+- **Modified:** `internal/api/operator.go` — approve body includes contribution_type
+- **Modified:** `internal/pipeline/operator.go` — OperatorApprove(..., contributionType); UpdateTransferContribution when set
+- **Modified:** `internal/api/deposits.go` — transferToJSON includes micr_routing, micr_account
+- **Modified:** `cmd/server/main.go` — go:embed web, webHandler (SPA + static), stats route
+- **Updated:** `docs/requirements/PRD.md`, `docs/development/devlog.md`
+
+### Next Steps
+- TICKET-010 (Settlement Engine).
+
+---
+
 ## Entry Format Template
 
 Each ticket entry follows this standardized structure:
@@ -445,7 +485,7 @@ Each ticket entry follows this standardized structure:
 | TICKET-006 | Double-Entry Ledger Posting | Phase 1 | P0 | 6h | DONE |
 | TICKET-007 | Deposit Pipeline Orchestration | Phase 1 | P0 | 6h | DONE |
 | TICKET-008 | REST API Layer | Phase 1 | P0 | 12h | DONE |
-| TICKET-009 | Operator Web UI | Phase 2 | P0 | 12h | TODO |
+| TICKET-009 | Operator Web UI | Phase 2 | P0 | 12h | DONE |
 | TICKET-010 | Settlement Engine | Phase 2 | P0 | 12h | TODO |
 | TICKET-011 | Return/Reversal Processing | Phase 2 | P0 | 6h | TODO |
 | TICKET-012 | Programmatic Data Seeding | Phase 3 | P1 | 6h | TODO |

@@ -11,8 +11,8 @@ import (
 )
 
 // OperatorApprove transitions a flagged transfer (Analyzing) to Approved → FundsPosted
-// with actor=operator:{operatorID}. It performs ledger posting as part of the approval.
-func OperatorApprove(ctx context.Context, deps Deps, cfg *config.Config, transferID, operatorID string) error {
+// with actor=operator:{operatorID}. Optional contributionType is stored before ledger post.
+func OperatorApprove(ctx context.Context, deps Deps, cfg *config.Config, transferID, operatorID, contributionType string) error {
 	t, err := store.GetTransfer(deps.DB, transferID)
 	if err != nil {
 		return err
@@ -23,6 +23,14 @@ func OperatorApprove(ctx context.Context, deps Deps, cfg *config.Config, transfe
 	}
 
 	actor := "operator:" + operatorID
+
+	// Optional contribution type override (e.g. INDIVIDUAL, EMPLOYER, ROLLOVER)
+	if contributionType != "" {
+		if err := store.UpdateTransferContribution(deps.DB, t.ID, contributionType); err != nil {
+			return fmt.Errorf("pipeline: update contribution: %w", err)
+		}
+		t.ContributionType = contributionType
+	}
 
 	// Analyzing → Approved
 	if err := transition(deps.DB, t, domain.StateApproved, actor, "operator approved"); err != nil {
