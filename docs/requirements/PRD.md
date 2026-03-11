@@ -583,12 +583,12 @@ Build configurable vendor stub with 7 differentiated response scenarios. Primary
 Implement session validation (static API key lookup), account resolution (investor → correspondent → omnibus), and business rule engine: deposit limit check (per-correspondent from YAML config), dual-layer duplicate detection (composite key in 30-day window), contribution type defaulting for retirement accounts, and account eligibility verification.
 
 **Acceptance Criteria:**
-- [ ] Request with invalid/missing API key returns 401 with structured error.
-- [ ] Request from ineligible investor (Dave Wilson) returns 403.
-- [ ] Deposit of $6,000 against CORR-APEX ($5,000 limit) returns `FUNDING.OVER_LIMIT`.
-- [ ] Same check submitted twice within 30 days returns `FUNDING.DUPLICATE`.
-- [ ] IRA account gets INDIVIDUAL contribution type from CORR-APEX config.
-- [ ] Omnibus account correctly resolved per correspondent (`OMNI-APEX-001` for CORR-APEX).
+- [x] Request with invalid/missing API key returns 401 with structured error.
+- [x] Request from ineligible investor (Dave Wilson) returns 403.
+- [x] Deposit of $6,000 against CORR-APEX ($5,000 limit) returns `FUNDING.OVER_LIMIT`.
+- [x] Same check submitted twice within 30 days returns `FUNDING.DUPLICATE`.
+- [x] IRA account gets INDIVIDUAL contribution type from CORR-APEX config.
+- [x] Omnibus account correctly resolved per correspondent (`OMNI-APEX-001` for CORR-APEX).
 
 ---
 
@@ -599,10 +599,10 @@ Implement session validation (static API key lookup), account resolution (invest
 Implement ledger posting service that creates balanced DEBIT + CREDIT entry pairs within a single BEGIN IMMEDIATE transaction. Transfer attributes: To AccountId (investor), From AccountId (omnibus), Type: MOVEMENT, Memo: FREE, SubType: DEPOSIT, Transfer Type: CHECK, Currency: USD.
 
 **Acceptance Criteria:**
-- [ ] Every posting creates exactly one DEBIT and one CREDIT of equal amounts.
-- [ ] Both entries created in same DB transaction (BEGIN IMMEDIATE).
-- [ ] Balance query (SUM of credits minus debits) returns correct account balance.
-- [ ] `TestLedgerInvariant`: sum of all DEBITs == sum of all CREDITs across all accounts.
+- [x] Every posting creates exactly one DEBIT and one CREDIT of equal amounts.
+- [x] Both entries created in same DB transaction (BEGIN IMMEDIATE).
+- [x] Balance query (SUM of credits minus debits) returns correct account balance.
+- [x] `TestLedgerInvariant`: sum of all DEBITs == sum of all CREDITs across all accounts.
 
 ---
 
@@ -613,11 +613,11 @@ Implement ledger posting service that creates balanced DEBIT + CREDIT entry pair
 Wire the vendor stub and funding service into a step function pipeline. Each step receives the deposit and returns a typed action (Continue, HaltRejected, HaltFlagged, HaltApproved). Pipeline runner executes steps in sequence, manages state transitions per the Side-Effect Mapping (Section 7.4), and logs each step to `deposit_events`.
 
 **Acceptance Criteria:**
-- [ ] Clean deposit flows: Requested → Validating → Analyzing → Approved → FundsPosted (Approved state always persisted, even for auto-approved deposits).
-- [ ] BLUR deposit flows: Requested → Validating → Rejected (pipeline halts at step 1).
-- [ ] MICR failure flows: Requested → Validating → Analyzing (flagged, needs review).
-- [ ] Each pipeline step logged as `deposit_event` with step index and action.
-- [ ] Auto-approved deposits have actor=`system` on the Analyzing→Approved transition; operator-approved deposits have actor=`operator:<id>`.
+- [x] Clean deposit flows: Requested → Validating → Analyzing → Approved → FundsPosted (Approved state always persisted, even for auto-approved deposits).
+- [x] BLUR deposit flows: Requested → Validating → Rejected (pipeline halts at step 1).
+- [x] MICR failure flows: Requested → Validating → Analyzing (flagged, needs review).
+- [x] Each pipeline step logged as `deposit_event` with step index and action.
+- [x] Auto-approved deposits have actor=`system` on the Analyzing→Approved transition; operator-approved deposits have actor=`operator:<id>`.
 
 ---
 
@@ -628,11 +628,11 @@ Wire the vendor stub and funding service into a step function pipeline. Each ste
 Implement resource-oriented REST API with `/api/v1/` prefix. All endpoints per Section 7.6. Auth middleware validates Bearer tokens. Structured error responses per Section 7.7.
 
 **Acceptance Criteria:**
-- [ ] All endpoints return structured JSON with appropriate HTTP status codes.
-- [ ] Error responses include `code`, `message`, `transfer_id`, and `details` fields.
-- [ ] Auth middleware rejects requests without valid Bearer token.
-- [ ] Image endpoint serves check images via `http.FileServer`.
-- [ ] Operator queue supports `?status=`, `?account=`, `?from=`, `?to=` query filters.
+- [x] All endpoints return structured JSON with appropriate HTTP status codes.
+- [x] Error responses include `code`, `message`, `transfer_id`, and `details` fields.
+- [x] Auth middleware rejects requests without valid Bearer token.
+- [x] Image endpoint serves check images via `http.FileServer`.
+- [x] Operator queue supports `?status=`, `?account=`, `?from=`, `?to=` query filters.
 
 ---
 
