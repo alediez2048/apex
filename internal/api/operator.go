@@ -92,13 +92,14 @@ func listQueue(w http.ResponseWriter, r *http.Request, deps pipeline.Deps) {
 
 func approveTransfer(w http.ResponseWriter, r *http.Request, cfg *config.Config, deps pipeline.Deps, id string) {
 	operatorID := r.Header.Get("X-Operator-ID")
+	var body struct {
+		OperatorID       string `json:"operator_id"`
+		ContributionType string `json:"contribution_type"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}
 	if operatorID == "" {
-		var body struct {
-			OperatorID string `json:"operator_id"`
-		}
-		if r.Body != nil {
-			_ = json.NewDecoder(r.Body).Decode(&body)
-		}
 		operatorID = body.OperatorID
 	}
 	if operatorID == "" {
@@ -106,7 +107,7 @@ func approveTransfer(w http.ResponseWriter, r *http.Request, cfg *config.Config,
 		return
 	}
 
-	if err := pipeline.OperatorApprove(r.Context(), deps, cfg, id, operatorID); err != nil {
+	if err := pipeline.OperatorApprove(r.Context(), deps, cfg, id, operatorID, body.ContributionType); err != nil {
 		WriteDomainError(w, err, id)
 		return
 	}
