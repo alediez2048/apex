@@ -35,3 +35,24 @@ func ListLedgerEntriesByAccount(db *sql.DB, accountID string) ([]LedgerEntry, er
 	}
 	return out, nil
 }
+
+// CountLedgerEntriesForTransfer returns the number of ledger entries for a transfer.
+func CountLedgerEntriesForTransfer(db *sql.DB, transferID string) (int, error) {
+	var n int
+	err := db.QueryRow("SELECT COUNT(*) FROM ledger_entries WHERE transfer_id = ?", transferID).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("store: count ledger entries: %w", err)
+	}
+	return n, nil
+}
+
+// RejectedTransfersWithLedgerCount returns how many Rejected transfers have at least one ledger entry (gating violation).
+func RejectedTransfersWithLedgerCount(db *sql.DB) (int, error) {
+	var n int
+	err := db.QueryRow(`SELECT COUNT(DISTINCT le.transfer_id) FROM ledger_entries le
+		INNER JOIN transfers t ON le.transfer_id = t.id WHERE t.status = ?`, "Rejected").Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("store: rejected with ledger count: %w", err)
+	}
+	return n, nil
+}

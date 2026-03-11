@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 
 	"github.com/alediez2048/apex/internal/config"
@@ -44,16 +45,35 @@ func StatsHandler(cfg *config.Config, db *sql.DB) http.HandlerFunc {
 		// Queue count (Analyzing)
 		queueCount := byState[string(domain.StateAnalyzing)]
 
+		// gating_correctness: Pass if no Rejected transfer has ledger entries (rejected never posted)
+		rejectedWithLedger, err := store.RejectedTransfersWithLedgerCount(db)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "SYSTEM.INTERNAL", "failed to compute gating stats", "", nil)
+			return
+		}
+		gatingCorrectness := "Pass"
+		if rejectedWithLedger > 0 {
+			gatingCorrectness = "Fail"
+		}
+
+		// vendor_scenario_coverage: distinct error_code values from deposit_events (7 vendor scenarios)
+		distinctCodes, err := store.GetDistinctErrorCodesFromEvents(db)
+		if err != nil {
+			WriteError(w, http.StatusInternalServerError, "SYSTEM.INTERNAL", "failed to compute vendor coverage", "", nil)
+			return
+		}
+		vendorScenarioCoverage := fmt.Sprintf("%d/7", len(distinctCodes))
+
 		WriteJSON(w, http.StatusOK, map[string]interface{}{
-			"deposits_by_state": byState,
-			"queue_count":       queueCount,
-			"gating_correctness": "Pass",
-			"settlement_reconciliation": "N/A",
-			"vendor_scenario_coverage": "7/7",
-			"operator_queue_response": "Pass",
-			"return_accuracy": "N/A",
-			"test_coverage": "N/A",
-			"setup_time": "Pass",
+			"deposits_by_state":         byState,
+			"queue_count":               queueCount,
+			"gating_correctness":         gatingCorrectness,
+			"settlement_reconciliation":  "N/A",
+			"vendor_scenario_coverage":   vendorScenarioCoverage,
+			"operator_queue_response":    "Pass",
+			"return_accuracy":            "N/A",
+			"test_coverage":              "N/A",
+			"setup_time":                 "Pass",
 		})
 	}
 }

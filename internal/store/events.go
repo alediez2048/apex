@@ -40,10 +40,32 @@ func ListEvents(db *sql.DB, transferID string) ([]Event, error) {
 
 // Event mirrors deposit_events row.
 type Event struct {
-	ID        int64
+	ID         int64
 	TransferID string
-	EventType string
-	Actor     string
-	Payload   string
-	CreatedAt string
+	EventType  string
+	Actor      string
+	Payload    string
+	CreatedAt  string
+}
+
+// GetDistinctErrorCodesFromEvents returns distinct error_code values from deposit_events payloads (JSON).
+// Used for vendor scenario coverage: count how many of the 7 vendor error codes have been exercised.
+func GetDistinctErrorCodesFromEvents(db *sql.DB) ([]string, error) {
+	rows, err := db.Query(`SELECT DISTINCT json_extract(payload, '$.error_code') FROM deposit_events
+		WHERE payload IS NOT NULL AND json_extract(payload, '$.error_code') IS NOT NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("store: distinct error codes: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var s sql.NullString
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		if s.Valid && s.String != "" {
+			out = append(out, s.String)
+		}
+	}
+	return out, nil
 }

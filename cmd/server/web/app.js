@@ -100,6 +100,17 @@
     return URL.createObjectURL(blob);
   }
 
+  function loadCheckImages(id) {
+    loadImage(id, 'front').then(function (url) {
+      const el = document.getElementById('check-front');
+      if (el && url) el.src = url;
+    });
+    loadImage(id, 'back').then(function (url) {
+      const el = document.getElementById('check-back');
+      if (el && url) el.src = url;
+    });
+  }
+
   async function renderOperator() {
     const key = getApiKey();
     if (!key) {
@@ -180,6 +191,11 @@
     return html;
   }
 
+  function escapeHtml(s) {
+    if (s == null || s === undefined) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   function isPlaceholderId(id) {
     if (!id || typeof id !== 'string') return true;
     if (id.indexOf('{') !== -1 || id.indexOf('}') !== -1) return true;
@@ -205,13 +221,25 @@
       return '<div class="container"><h1>Transfer not found</h1><p class="error">' + (e.data?.message || e.message) + '</p>' +
         '<p><a href="/">Dashboard</a> &middot; <a href="/operator">Operator queue</a></p></div>';
     }
-    let html = '<div class="container transfer-detail"><h1>Transfer ' + (transfer.transfer_id || id) + '</h1>';
-    html += '<div class="section"><h2>Details</h2><p>Status: <strong>' + (transfer.status || '') + '</strong> | Account: ' + (transfer.investor_account_id || '') + ' | Amount: $' + ((transfer.amount_cents || 0) / 100).toFixed(2) + '</p></div>';
+    let html = '<div class="container transfer-detail"><h1>Transfer ' + escapeHtml(transfer.transfer_id || id) + '</h1>';
+    const details = [
+      'Status: <strong>' + escapeHtml(transfer.status || '') + '</strong>',
+      'Account: ' + escapeHtml(transfer.investor_account_id || ''),
+      'Amount: $' + ((transfer.amount_cents || 0) / 100).toFixed(2),
+      transfer.vendor_transaction_id ? ('Vendor TX: ' + escapeHtml(transfer.vendor_transaction_id)) : '',
+      transfer.check_number ? ('Check #: ' + escapeHtml(transfer.check_number)) : '',
+      (transfer.micr_routing || transfer.micr_account) ? ('MICR: ' + escapeHtml(transfer.micr_routing || '') + ' / ' + escapeHtml(transfer.micr_account || '')) : '',
+      transfer.risk_score != null ? ('Risk score: ' + escapeHtml(String(transfer.risk_score))) : '',
+      transfer.contribution_type ? ('Contribution: ' + escapeHtml(transfer.contribution_type)) : '',
+      transfer.settlement_batch_id ? ('Settlement batch: ' + escapeHtml(transfer.settlement_batch_id)) : '',
+    ].filter(Boolean).join(' | ');
+    html += '<div class="section"><h2>Details</h2><p>' + details + '</p></div>';
+    html += '<div class="section"><h2>Check images</h2><p><img id="check-front" alt="Front" style="max-width:200px; margin-right:8px"><img id="check-back" alt="Back" style="max-width:200px"></p></div>';
     html += '<div class="section"><h2>Decision trace (events)</h2><ul class="events">';
     const events = Array.isArray(history) ? history : [];
     events.forEach(function (ev) {
       const payload = ev.payload ? ('<pre>' + ev.payload.replace(/</g, '&lt;') + '</pre>') : '';
-      html += '<li><span class="event-type">' + (ev.event_type || '') + '</span> <span class="actor">' + (ev.actor || '') + '</span> ' + (ev.created_at || '') + payload + '</li>';
+      html += '<li><span class="event-type">' + escapeHtml(ev.event_type || '') + '</span> <span class="actor">' + escapeHtml(ev.actor || '') + '</span> ' + escapeHtml(ev.created_at || '') + payload + '</li>';
     });
     html += '</ul></div></div>';
     return html;
@@ -262,7 +290,11 @@
     } else if (pathResult.view === 'operator') {
       renderOperator().then(go);
     } else if (pathResult.view === 'transfer' && pathResult.id) {
-      renderTransfer(pathResult.id).then(go);
+      var tid = pathResult.id;
+      renderTransfer(tid).then(function (html) {
+        go(html);
+        loadCheckImages(tid);
+      });
     } else {
       go('<div class="container"><h1>Not found</h1></div>');
     }
