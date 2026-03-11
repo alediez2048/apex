@@ -97,3 +97,13 @@ func Load() (*Config, error) {
 
 	return cfg, nil
 }
+
+// InvestorByAccountID returns the investor with the given account ID, or nil.
+func (c *Config) InvestorByAccountID(accountID string) *Investor {
+	for i := range c.Investors {
+		if c.Investors[i].AccountID == accountID {
+			return &c.Investors[i]
+		}
+	}
+	return nil
+}
