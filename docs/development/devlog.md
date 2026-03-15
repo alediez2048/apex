@@ -66,10 +66,10 @@ This phase makes the project submission-ready with seeded scenarios, automated v
 
 | Ticket | Title | Phase Role | Priority | Est. | Status |
 |--------|-------|------------|----------|------|--------|
-| TICKET-012 | Programmatic Data Seeding | **Demo Enablement** — bootstrap realistic deposits, images, and states | P1 | 6h | TODO |
-| TICKET-013 | Test Suite | **QA** — 20+ tests covering invariants and end-to-end flows | P0 | 20h | TODO |
-| TICKET-014 | Demo Script and Makefile | **Developer Experience** — one-command setup and narrated walkthrough | P0 | 6h | TODO |
-| TICKET-015 | Documentation Package | **Submission** — README, architecture, ADRs, risks, and submission doc | P0 | 6h | TODO |
+| TICKET-012 | Programmatic Data Seeding | **Demo Enablement** — bootstrap realistic deposits, images, and states | P1 | 6h | DONE |
+| TICKET-013 | Test Suite | **QA** — 20+ tests covering invariants and end-to-end flows | P0 | 20h | DONE |
+| TICKET-014 | Demo Script and Makefile | **Developer Experience** — one-command setup and narrated walkthrough | P0 | 6h | DONE |
+| TICKET-015 | Documentation Package | **Submission** — README, architecture, ADRs, risks, and submission doc | P0 | 6h | DONE |
 
 ### Phase 3 Dependencies
 
@@ -569,10 +569,10 @@ Each ticket entry follows this standardized structure:
 | TICKET-009 | Operator Web UI | Phase 2 | P0 | 12h | DONE |
 | TICKET-010 | Settlement Engine | Phase 2 | P0 | 12h | DONE |
 | TICKET-011 | Return/Reversal Processing | Phase 2 | P0 | 6h | DONE |
-| TICKET-012 | Programmatic Data Seeding | Phase 3 | P1 | 6h | TODO |
-| TICKET-013 | Test Suite | Phase 3 | P0 | 20h | TODO |
-| TICKET-014 | Demo Script and Makefile | Phase 3 | P0 | 6h | TODO |
-| TICKET-015 | Documentation Package | Phase 3 | P0 | 6h | TODO |
+| TICKET-012 | Programmatic Data Seeding | Phase 3 | P1 | 6h | DONE |
+| TICKET-013 | Test Suite | Phase 3 | P0 | 20h | DONE |
+| TICKET-014 | Demo Script and Makefile | Phase 3 | P0 | 6h | DONE |
+| TICKET-015 | Documentation Package | Phase 3 | P0 | 6h | DONE |
 
 **Total: 15 tickets · ~131 hours · 19 delivery days**
 
