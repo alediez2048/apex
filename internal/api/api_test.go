@@ -44,6 +44,10 @@ func testCfg() *config.Config {
 			{AccountID: "PASS-10001", APIKey: "tok_alice_001", CorrespondentID: "CORR-APEX", Eligible: true, AccountType: "IRA"},
 			{AccountID: "BLUR-20001", APIKey: "tok_bob_002", CorrespondentID: "CORR-APEX", Eligible: true, AccountType: "standard"},
 			{AccountID: "MICR-10001", APIKey: "tok_carol_003", CorrespondentID: "CORR-APEX", Eligible: true, AccountType: "standard"},
+			{AccountID: "GLARE-20002", APIKey: "tok_frank_006", CorrespondentID: "CORR-APEX", Eligible: true, AccountType: "standard"},
+			{AccountID: "DUP-30001", APIKey: "tok_dave_004", CorrespondentID: "CORR-APEX", Eligible: false, AccountType: "standard"},
+			{AccountID: "PASS-99999", APIKey: "tok_suspended_007", CorrespondentID: "CORR-APEX", Eligible: false, AccountType: "standard"},
+			{AccountID: "MISMATCH-10001", APIKey: "tok_eve_005", CorrespondentID: "CORR-APEX", Eligible: true, AccountType: "standard"},
 		},
 	}
 }
@@ -916,5 +920,488 @@ func TestReturns_LedgerInvariant(t *testing.T) {
 	}
 	if totalDebits != totalCredits {
 		t.Fatalf("ledger invariant violated: debits=%d credits=%d", totalDebits, totalCredits)
+	}
+}
+
+// =============================================================================
+// PRD Test Manifest (TICKET-013) — named integration tests per PRD §9 lines 720-741
+// =============================================================================
+
+// createDeposit is a test helper: POST /api/v1/deposits with given account/amount/token.
+func createDeposit(t *testing.T, handler http.HandlerFunc, accountID string, amountCents int64, apiKey string) (int, map[string]interface{}) {
+	t.Helper()
+	payload, _ := json.Marshal(map[string]interface{}{"account_id": accountID, "amount_cents": amountCents})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/deposits", bytes.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler(w, req)
+	m := parseBody(t, w.Result())
+	return w.Code, m
+}
+
+// 1. TestIntegration_HappyPath — end-to-end deposit → FundsPosted → settlement
+func TestIntegration_HappyPath(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+	depositH := api.DepositsHandler(cfg, db, deps)
+	settlementH := api.SettlementHandler(cfg, db)
+
+	// Create deposit → FundsPosted
+	code, m := createDeposit(t, depositH, "PASS-10001", 15000, "tok_alice_001")
+	if code != http.StatusCreated {
+		t.Fatalf("want 201, got %d", code)
+	}
+	if m["status"] != "FundsPosted" {
+		t.Fatalf("want FundsPosted, got %v", m["status"])
+	}
+	tid := m["transfer_id"].(string)
+
+	// Settle
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/settlement/batches", nil)
+	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	w := httptest.NewRecorder()
+	settlementH(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("settlement: want 201, got %d: %s", w.Code, w.Body.String())
+	}
+	sm := parseBody(t, w.Result())
+	if sm["batch_id"] == nil || sm["batch_id"] == "" {
+		t.Fatal("want batch_id in settlement response")
+	}
+
+	// Verify transfer has settlement_batch_id
+	tr, _ := store.GetTransfer(db, tid)
+	if tr.SettlementBatchID == "" {
+		t.Fatal("want settlement_batch_id set on transfer")
+	}
+}
+
+// 2. TestIntegration_VendorBlur — IQA blur → Rejected
+func TestIntegration_VendorBlur(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+	handler := api.DepositsHandler(cfg, db, deps)
+
+	code, m := createDeposit(t, handler, "BLUR-20001", 5000, "tok_bob_002")
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d", code)
+	}
+	if m["status"] != "Rejected" {
+		t.Fatalf("want Rejected, got %v", m["status"])
+	}
+}
+
+// 3. TestIntegration_VendorGlare — IQA glare → Rejected
+func TestIntegration_VendorGlare(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+	handler := api.DepositsHandler(cfg, db, deps)
+
+	code, m := createDeposit(t, handler, "GLARE-20002", 5000, "tok_frank_006")
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d", code)
+	}
+	if m["status"] != "Rejected" {
+		t.Fatalf("want Rejected, got %v", m["status"])
+	}
+}
+
+// 4. TestIntegration_VendorMICRFailure — MICR failure → Analyzing (flagged)
+func TestIntegration_VendorMICRFailure(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+	handler := api.DepositsHandler(cfg, db, deps)
+
+	code, m := createDeposit(t, handler, "MICR-10001", 5000, "tok_carol_003")
+	if code != http.StatusCreated {
+		t.Fatalf("want 201, got %d", code)
+	}
+	if m["status"] != "Analyzing" {
+		t.Fatalf("want Analyzing (flagged), got %v", m["status"])
+	}
+	if m["action"] != "HaltFlagged" {
+		t.Fatalf("want HaltFlagged, got %v", m["action"])
+	}
+}
+
+// 5. TestIntegration_VendorDuplicate — vendor duplicate → Rejected
+func TestIntegration_VendorDuplicate(t *testing.T) {
+	cfg := testCfg()
+	// Add a DUP-prefixed eligible account for this test
+	cfg.Investors = append(cfg.Investors, config.Investor{
+		AccountID: "DUP-99001", APIKey: "tok_dup_test", CorrespondentID: "CORR-APEX", Eligible: true, AccountType: "standard",
+	})
+	db := testDB(t)
+	deps := pipeline.Deps{
+		DB:            db,
+		VendorStub:    vendor.NewStub(),
+		FundingEngine: funding.NewEngine(cfg, nil),
+	}
+	handler := api.DepositsHandler(cfg, db, deps)
+
+	code, m := createDeposit(t, handler, "DUP-99001", 5000, "tok_dup_test")
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d", code)
+	}
+	if m["status"] != "Rejected" {
+		t.Fatalf("want Rejected, got %v", m["status"])
+	}
+}
+
+// 6. TestIntegration_VendorAmountMismatch — amount mismatch → Analyzing (flagged)
+func TestIntegration_VendorAmountMismatch(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+	handler := api.DepositsHandler(cfg, db, deps)
+
+	code, m := createDeposit(t, handler, "MISMATCH-10001", 5000, "tok_eve_005")
+	if code != http.StatusCreated {
+		t.Fatalf("want 201, got %d", code)
+	}
+	// MISMATCH triggers AMOUNT_MISMATCH outcome which is non-terminal → Analyzing
+	if m["status"] != "Analyzing" {
+		t.Fatalf("want Analyzing (flagged), got %v", m["status"])
+	}
+}
+
+// 7. TestIntegration_OverDepositLimit — $6,000 vs $5,000 limit → Rejected
+func TestIntegration_OverDepositLimit(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+	handler := api.DepositsHandler(cfg, db, deps)
+
+	// CORR-APEX limit is 500000 cents ($5,000). Submit $6,000 = 600000 cents.
+	code, m := createDeposit(t, handler, "PASS-10001", 600000, "tok_alice_001")
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d", code)
+	}
+	if m["status"] != "Rejected" {
+		t.Fatalf("want Rejected, got %v", m["status"])
+	}
+}
+
+// 8. TestIntegration_FundingDuplicateDetection — same check twice → second rejected
+func TestIntegration_FundingDuplicateDetection(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	dup := &funding.SQLDuplicateChecker{DB: db}
+	deps := pipeline.Deps{
+		DB:            db,
+		VendorStub:    vendor.NewStub(),
+		FundingEngine: funding.NewEngine(cfg, dup),
+	}
+	handler := api.DepositsHandler(cfg, db, deps)
+
+	// First deposit succeeds
+	code1, _ := createDeposit(t, handler, "PASS-10001", 15000, "tok_alice_001")
+	if code1 != http.StatusCreated {
+		t.Fatalf("first deposit: want 201, got %d", code1)
+	}
+
+	// Second deposit with same account (same MICR) → funding duplicate
+	code2, m2 := createDeposit(t, handler, "PASS-10001", 15000, "tok_alice_001")
+	if code2 != http.StatusUnprocessableEntity {
+		t.Fatalf("second deposit: want 422, got %d", code2)
+	}
+	if m2["status"] != "Rejected" {
+		t.Fatalf("want Rejected, got %v", m2["status"])
+	}
+}
+
+// 9. TestIntegration_OperatorApprove — operator approves flagged → FundsPosted
+func TestIntegration_OperatorApprove(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+
+	// Create a flagged deposit via MICR failure
+	depositH := api.DepositsHandler(cfg, db, deps)
+	code, m := createDeposit(t, depositH, "MICR-10001", 10000, "tok_carol_003")
+	if code != http.StatusCreated {
+		t.Fatalf("want 201, got %d", code)
+	}
+	tid := m["transfer_id"].(string)
+
+	// Operator approves
+	operatorH := api.OperatorHandler(cfg, deps)
+	payload := `{"operator_id":"op1"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/operator/queue/"+tid+"/approve", bytes.NewBufferString(payload))
+	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	operatorH(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	tr, _ := store.GetTransfer(db, tid)
+	if tr.Status != domain.StateFundsPosted {
+		t.Fatalf("want FundsPosted, got %s", tr.Status)
+	}
+}
+
+// 10. TestIntegration_OperatorReject — operator rejects flagged → Rejected
+func TestIntegration_OperatorReject(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+
+	depositH := api.DepositsHandler(cfg, db, deps)
+	code, m := createDeposit(t, depositH, "MICR-10001", 10000, "tok_carol_003")
+	if code != http.StatusCreated {
+		t.Fatalf("want 201, got %d", code)
+	}
+	tid := m["transfer_id"].(string)
+
+	operatorH := api.OperatorHandler(cfg, deps)
+	payload := `{"operator_id":"op2","reason":"suspicious"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/operator/queue/"+tid+"/reject", bytes.NewBufferString(payload))
+	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	operatorH(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	tr, _ := store.GetTransfer(db, tid)
+	if tr.Status != domain.StateRejected {
+		t.Fatalf("want Rejected, got %s", tr.Status)
+	}
+}
+
+// 11. TestIntegration_ReturnAndReversal — return → reversal + $30 fee + Returned
+func TestIntegration_ReturnAndReversal(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+
+	// Create a deposit that reaches FundsPosted
+	depositH := api.DepositsHandler(cfg, db, deps)
+	code, m := createDeposit(t, depositH, "PASS-10001", 20000, "tok_alice_001")
+	if code != http.StatusCreated {
+		t.Fatalf("want 201, got %d", code)
+	}
+	tid := m["transfer_id"].(string)
+
+	// Process return
+	returnsH := api.ReturnsHandler(cfg, db)
+	body := `{"transfer_id":"` + tid + `","reason":"NSF"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/returns", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	w := httptest.NewRecorder()
+	returnsH(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	rm := parseBody(t, w.Result())
+	if rm["status"] != "Returned" {
+		t.Fatalf("want Returned, got %v", rm["status"])
+	}
+	if rm["fee_cents"] != float64(3000) {
+		t.Fatalf("want fee_cents 3000, got %v", rm["fee_cents"])
+	}
+	if rm["reversal_amount_cents"] != float64(20000) {
+		t.Fatalf("want reversal 20000, got %v", rm["reversal_amount_cents"])
+	}
+}
+
+// 12. TestIntegration_SettlementFileContents — settlement file has correct X9 structure and totals
+func TestIntegration_SettlementFileContents(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+	depositH := api.DepositsHandler(cfg, db, deps)
+	settlementH := api.SettlementHandler(cfg, db)
+
+	// Create two deposits
+	createDeposit(t, depositH, "PASS-10001", 10000, "tok_alice_001")
+	createDeposit(t, depositH, "PASS-10001", 25000, "tok_alice_001")
+
+	// Generate batch
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/settlement/batches", nil)
+	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	w := httptest.NewRecorder()
+	settlementH(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("want 201, got %d: %s", w.Code, w.Body.String())
+	}
+	m := parseBody(t, w.Result())
+	file, _ := m["file"].(map[string]interface{})
+	if file == nil {
+		t.Fatal("want file in response")
+	}
+	if file["file_header"] == nil {
+		t.Fatal("want file_header")
+	}
+	fc, _ := file["file_control"].(map[string]interface{})
+	if fc == nil {
+		t.Fatal("want file_control")
+	}
+	if total, _ := fc["total_amount"].(float64); total != 35000 {
+		t.Fatalf("want total_amount 35000, got %v", fc["total_amount"])
+	}
+	if count, _ := fc["item_count"].(float64); count != 2 {
+		t.Fatalf("want item_count 2, got %v", fc["item_count"])
+	}
+}
+
+// 13. TestIntegration_UnauthenticatedRequest — no token → 401
+func TestIntegration_UnauthenticatedRequest(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+	handler := api.DepositsHandler(cfg, db, deps)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/deposits", nil)
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d", w.Code)
+	}
+	m := parseBody(t, w.Result())
+	if m["code"] != "UNAUTHORIZED" {
+		t.Fatalf("want UNAUTHORIZED, got %v", m["code"])
+	}
+}
+
+// 14. TestIntegration_IneligibleAccount — ineligible investor → 422 Rejected
+func TestIntegration_IneligibleAccount(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+	handler := api.DepositsHandler(cfg, db, deps)
+
+	// PASS-99999 passes vendor validation (PASS- prefix) but has eligible=false
+	code, m := createDeposit(t, handler, "PASS-99999", 5000, "tok_suspended_007")
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d", code)
+	}
+	if m["status"] != "Rejected" {
+		t.Fatalf("want Rejected, got %v", m["status"])
+	}
+}
+
+// 18. TestLedgerInvariant_DebitsEqualCredits — sum of all debits == sum of all credits
+func TestLedgerInvariant_DebitsEqualCredits(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+	depositH := api.DepositsHandler(cfg, db, deps)
+	returnsH := api.ReturnsHandler(cfg, db)
+
+	// Create deposits
+	_, m1 := createDeposit(t, depositH, "PASS-10001", 15000, "tok_alice_001")
+	_, m2 := createDeposit(t, depositH, "PASS-10001", 25000, "tok_alice_001")
+	tid1 := m1["transfer_id"].(string)
+	_ = m2["transfer_id"].(string)
+
+	// Return one
+	body := `{"transfer_id":"` + tid1 + `","reason":"NSF"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/returns", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	w := httptest.NewRecorder()
+	returnsH(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("return: want 200, got %d", w.Code)
+	}
+
+	// Verify invariant
+	var totalDebits, totalCredits int64
+	rows, err := db.Query("SELECT entry_type, SUM(amount) FROM ledger_entries GROUP BY entry_type")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var entryType string
+		var sum int64
+		if err := rows.Scan(&entryType, &sum); err != nil {
+			t.Fatal(err)
+		}
+		if entryType == "DEBIT" {
+			totalDebits = sum
+		} else {
+			totalCredits = sum
+		}
+	}
+	if totalDebits != totalCredits {
+		t.Fatalf("ledger invariant violated: debits=%d credits=%d", totalDebits, totalCredits)
+	}
+}
+
+// 19. TestSettlement_NoDoubleBatching — second batch returns zero items
+func TestSettlement_NoDoubleBatching(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	deps := testDeps(t, db)
+	depositH := api.DepositsHandler(cfg, db, deps)
+	settlementH := api.SettlementHandler(cfg, db)
+
+	createDeposit(t, depositH, "PASS-10001", 10000, "tok_alice_001")
+	createDeposit(t, depositH, "PASS-10001", 20000, "tok_alice_001")
+
+	// First batch
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/settlement/batches", nil)
+	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	w1 := httptest.NewRecorder()
+	settlementH(w1, req)
+	if w1.Code != http.StatusCreated {
+		t.Fatalf("first batch: want 201, got %d", w1.Code)
+	}
+
+	// Second batch — no deposits to batch
+	w2 := httptest.NewRecorder()
+	settlementH(w2, req)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("second batch: want 200, got %d", w2.Code)
+	}
+	m := parseBody(t, w2.Result())
+	if m["message"] != "no deposits to batch" {
+		t.Fatalf("want 'no deposits to batch', got %v", m["message"])
+	}
+}
+
+// 20. TestReturnOnCompletedDeposit — late return on Completed deposit succeeds
+func TestReturnOnCompletedDeposit(t *testing.T) {
+	cfg := testCfg()
+	db := testDB(t)
+	handler := api.ReturnsHandler(cfg, db)
+
+	seedTransfer(t, db, "tx-late", "PASS-10001", "CORR-APEX", 30000, domain.StateCompleted)
+	if err := ledger.Post(context.Background(), db, "tx-late", "OMNI-APEX-001", "PASS-10001", 30000, "FREE"); err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"transfer_id":"tx-late","reason":"UNAUTHORIZED"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/returns", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	m := parseBody(t, w.Result())
+	if m["status"] != "Returned" {
+		t.Fatalf("want Returned, got %v", m["status"])
+	}
+	if m["fee_cents"] != float64(3000) {
+		t.Fatalf("want fee 3000, got %v", m["fee_cents"])
+	}
+
+	tr, _ := store.GetTransfer(db, "tx-late")
+	if tr.Status != domain.StateReturned {
+		t.Fatalf("want Returned in DB, got %s", tr.Status)
 	}
 }
