@@ -16,6 +16,7 @@ import (
 	"github.com/alediez2048/apex/internal/config"
 	"github.com/alediez2048/apex/internal/funding"
 	"github.com/alediez2048/apex/internal/pipeline"
+	"github.com/alediez2048/apex/internal/seed"
 	"github.com/alediez2048/apex/internal/store"
 	"github.com/alediez2048/apex/internal/vendor"
 )
@@ -59,6 +60,12 @@ func main() {
 	dup := &funding.SQLDuplicateChecker{DB: db}
 	fundingEngine := funding.NewEngine(cfg, dup)
 	pipeDeps := pipeline.Deps{DB: db, VendorStub: vs, FundingEngine: fundingEngine}
+
+	// Seed demo data on fresh database (idempotent)
+	if err := seed.Run(context.Background(), db, cfg, pipeDeps); err != nil {
+		slog.Error("seed failed", "error", err)
+		os.Exit(1)
+	}
 
 	mux := http.NewServeMux()
 
