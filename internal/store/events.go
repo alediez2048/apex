@@ -17,6 +17,18 @@ func InsertEvent(db *sql.DB, transferID, eventType, actor, payloadJSON string) e
 	return nil
 }
 
+// InsertEventTx adds a row to deposit_events using an existing transaction.
+func InsertEventTx(tx *sql.Tx, transferID, eventType, actor, payloadJSON string) error {
+	_, err := tx.Exec(
+		"INSERT INTO deposit_events (transfer_id, event_type, actor, payload) VALUES (?,?,?,?)",
+		transferID, eventType, actor, payloadJSON,
+	)
+	if err != nil {
+		return fmt.Errorf("store: insert event (tx): %w", err)
+	}
+	return nil
+}
+
 // ListEvents returns all events for a transfer, oldest first.
 func ListEvents(db *sql.DB, transferID string) ([]Event, error) {
 	rows, err := db.Query(

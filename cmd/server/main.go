@@ -94,12 +94,12 @@ func main() {
 	// Accounts: balance/ledger
 	mux.HandleFunc("/api/v1/accounts/", api.AccountsHandler(cfg, db))
 
-	// Settlement stubs (TICKET-010)
-	mux.HandleFunc("/api/v1/settlement/", api.SettlementHandler(cfg))
+	// Settlement (TICKET-010)
+	mux.HandleFunc("/api/v1/settlement/", api.SettlementHandler(cfg, db))
 
-	// Returns stubs (TICKET-011)
-	mux.HandleFunc("/api/v1/returns/", api.ReturnsHandler(cfg))
-	mux.HandleFunc("/api/v1/returns", api.ReturnsHandler(cfg))
+	// Returns (TICKET-011)
+	mux.HandleFunc("/api/v1/returns/", api.ReturnsHandler(cfg, db))
+	mux.HandleFunc("/api/v1/returns", api.ReturnsHandler(cfg, db))
 
 	// Stats for dashboard (TICKET-009)
 	mux.HandleFunc("/api/v1/stats/dashboard", api.StatsHandler(cfg, db))

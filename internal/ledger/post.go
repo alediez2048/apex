@@ -63,6 +63,30 @@ func postTx(ctx context.Context, db *sql.DB, transferID, fromAccountID, toAccoun
 	return nil
 }
 
+// PostPairTx inserts a balanced DEBIT + CREDIT pair using an existing transaction.
+// Caller owns the transaction (begin/commit/rollback). fromAccountID is debited; toAccountID is credited.
+func PostPairTx(tx *sql.Tx, transferID, fromAccountID, toAccountID string, amountCents int64, memo string) error {
+	if amountCents <= 0 {
+		return fmt.Errorf("ledger: amount must be positive, got %d", amountCents)
+	}
+	debitID, err := newID()
+	if err != nil {
+		return err
+	}
+	creditID, err := newID()
+	if err != nil {
+		return err
+	}
+	const ins = `INSERT INTO ledger_entries (id, transfer_id, account_id, entry_type, amount, memo) VALUES (?,?,?,?,?,?)`
+	if _, err := tx.Exec(ins, debitID, transferID, fromAccountID, "DEBIT", amountCents, memo); err != nil {
+		return fmt.Errorf("ledger: insert debit: %w", err)
+	}
+	if _, err := tx.Exec(ins, creditID, transferID, toAccountID, "CREDIT", amountCents, memo); err != nil {
+		return fmt.Errorf("ledger: insert credit: %w", err)
+	}
+	return nil
+}
+
 // newID returns a "le-" prefixed 32-char hex string from 16 bytes of crypto/rand.
 func newID() (string, error) {
 	var b [16]byte
