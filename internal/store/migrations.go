@@ -57,6 +57,17 @@ CREATE INDEX IF NOT EXISTS idx_ledger_entries_transfer ON ledger_entries(transfe
 CREATE INDEX IF NOT EXISTS idx_deposit_events_transfer ON deposit_events(transfer_id);
 `,
 	},
+	{
+		version: 2,
+		sql: `CREATE TABLE IF NOT EXISTS settlement_batches (
+	id TEXT PRIMARY KEY,
+	settlement_date TEXT NOT NULL,
+	file_json TEXT NOT NULL,
+	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_transfers_settlement_batch ON transfers(settlement_batch_id);
+`,
+	},
 }
 
 // RunMigrations runs any pending migrations in order. Idempotent: already-applied versions are skipped.

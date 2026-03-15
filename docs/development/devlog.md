@@ -49,8 +49,8 @@ This phase turns the processing engine into a full end-to-end product by adding 
 | Ticket | Title | Phase Role | Priority | Est. | Status |
 |--------|-------|------------|----------|------|--------|
 | TICKET-009 | Operator Web UI | **Operations** — manual review queue, risk triage, and operator actions | P0 | 12h | DONE |
-| TICKET-010 | Settlement Engine | **Settlement** — X9-style structured JSON, batching, cutoff, and rollover | P0 | 12h | TODO |
-| TICKET-011 | Return/Reversal Processing | **Financial Recovery** — bounced check reversals and fee application | P0 | 6h | TODO |
+| TICKET-010 | Settlement Engine | **Settlement** — X9-style structured JSON, batching, cutoff, and rollover | P0 | 12h | DONE |
+| TICKET-011 | Return/Reversal Processing | **Financial Recovery** — bounced check reversals and fee application | P0 | 6h | DONE |
 
 ### Phase 2 Dependencies
 
@@ -414,6 +414,87 @@ This phase makes the project submission-ready with seeded scenarios, automated v
 
 ---
 
+## TICKET-010: Settlement Engine ✅
+
+### Plain-English Summary
+- Implemented X9 ICL–structured JSON settlement file generation. **POST /api/v1/settlement/batches** (optional `?as_of=<RFC3339>`) lists unbatched FundsPosted in a single transaction, builds file_header / cash_letters / file_control, inserts a batch row, assigns `settlement_batch_id` to each transfer, and commits (no double-batching).
+- **GET /api/v1/settlement/batches/{id}** returns the stored file JSON; **GET .../batches/{id}/items** returns transfer summaries for that batch.
+- EOD cutoff: 6:30 PM CT; injectable clock via `as_of`; settlement date = same day if before cutoff, else next business day (skip weekends). Friday 7 PM CT → Monday.
+- Rejected deposits are never included (query filters on status = FundsPosted only).
+
+### Metadata
+- **Status:** Complete
+- **Date:** 2026-03-10
+- **Ticket:** TICKET-010
+- **Branch:** main
+
+### Acceptance Criteria
+- [x] Generated file has file_header, cash_letters[], and file_control structure
+- [x] file_control.total_amount equals sum of all check detail amounts
+- [x] Deposits after 6:30 PM CT get next business day settlement date
+- [x] Friday 7:00 PM CT deposit rolls to Monday
+- [x] Rejected deposits never included
+- [x] Deposits in a batch have settlement_batch_id set; second batch does not re-include them
+- [x] Batch generation and settlement_batch_id assignment in same DB transaction
+
+### Files Changed
+- **Created:** `internal/settlement/cutoff.go` — 6:30 PM CT cutoff, SettlementDate, NextBusinessDay
+- **Created:** `internal/settlement/x9.go` — X9File struct, BuildFile, ToJSON
+- **Created:** `internal/settlement/engine.go` — GenerateBatch(db, now) with single tx
+- **Created:** `internal/settlement/cutoff_test.go` — cutoff and Friday→Monday tests
+- **Created:** `internal/store/settlement_batches.go` — InsertSettlementBatch, GetBatch, ListTransfersBySettlementBatch
+- **Modified:** `internal/store/migrations.go` — migration 2: settlement_batches table
+- **Modified:** `internal/store/transfers.go` — ListUnbatchedFundsPostedInTx, UpdateTransferSettlementBatch
+- **Modified:** `internal/api/stubs.go` — SettlementHandler(cfg, db): POST batches, GET batch, GET batch items
+- **Modified:** `cmd/server/main.go` — pass db to SettlementHandler
+- **Modified:** `internal/api/api_test.go` — settlement tests (401, 200 no deposits, 201 + no double-batch)
+- **Updated:** `docs/plans/ticket-010_settlement_engine.plan.md`, `docs/development/devlog.md`
+
+### Next Steps
+- TICKET-011 (Return/Reversal Processing).
+
+---
+
+## TICKET-011: Return/Reversal Processing ✅
+
+### Plain-English Summary
+- Implemented `POST /api/v1/returns` to process check returns in a single database transaction: validate transfer state (FundsPosted or Completed only), create 4 ledger entries (2 balanced pairs: reversal + $30 fee), transition to Returned, and log 3 events.
+- **Reversal pair:** DEBIT investor (original amount) / CREDIT omnibus (original amount).
+- **Fee pair:** DEBIT investor 3000 cents / CREDIT omnibus 3000 cents.
+- **Events:** RETURN_RECEIVED (reason), REVERSAL_POSTED (amounts), INVESTOR_NOTIFIED (original amount, fee, net debit, reason code, human-readable message).
+- Returns on invalid states (e.g. Requested) return 409 `STATE.INVALID_TRANSITION`. Returns on non-existent transfers return 404.
+- Internal errors are logged and return generic 500 messages (no error leak).
+
+### Metadata
+- **Status:** Complete
+- **Date:** 2026-03-11
+- **Ticket:** TICKET-011
+- **Branch:** main
+
+### Acceptance Criteria
+- [x] Return on FundsPosted deposit succeeds; transfer moves to Returned
+- [x] Return on Completed deposit succeeds; transfer moves to Returned (late returns)
+- [x] Reversal creates exactly 4 ledger entries: 2 balanced pairs (reversal + fee)
+- [x] Fee amount is exactly 3000 cents ($30.00)
+- [x] Return on Requested deposit returns STATE.INVALID_TRANSITION error (409)
+- [x] Post-reversal, ledger debits equal credits (invariant preserved)
+- [x] INVESTOR_NOTIFIED event payload includes: original amount, fee amount, net debit, reason code, human-readable message
+
+### Files Changed
+- **Created:** `internal/returns/process.go` — ProcessReturn (single tx: validate, reverse, fee, status, events)
+- **Modified:** `internal/ledger/post.go` — added PostPairTx(tx, ...) for in-transaction ledger pairs
+- **Modified:** `internal/store/transfers.go` — added UpdateTransferStatusTx(tx, ...)
+- **Modified:** `internal/store/events.go` — added InsertEventTx(tx, ...)
+- **Modified:** `internal/api/stubs.go` — ReturnsHandler(cfg, db): POST parses body, calls ProcessReturn, maps errors
+- **Modified:** `cmd/server/main.go` — ReturnsHandler(cfg, db) wiring
+- **Modified:** `internal/api/api_test.go` — 5 return tests (FundsPosted, Completed, invalid state, not found, ledger invariant)
+- **Updated:** `docs/development/devlog.md`
+
+### Next Steps
+- TICKET-012 (Programmatic Data Seeding).
+
+---
+
 ## Entry Format Template
 
 Each ticket entry follows this standardized structure:
@@ -486,8 +567,8 @@ Each ticket entry follows this standardized structure:
 | TICKET-007 | Deposit Pipeline Orchestration | Phase 1 | P0 | 6h | DONE |
 | TICKET-008 | REST API Layer | Phase 1 | P0 | 12h | DONE |
 | TICKET-009 | Operator Web UI | Phase 2 | P0 | 12h | DONE |
-| TICKET-010 | Settlement Engine | Phase 2 | P0 | 12h | TODO |
-| TICKET-011 | Return/Reversal Processing | Phase 2 | P0 | 6h | TODO |
+| TICKET-010 | Settlement Engine | Phase 2 | P0 | 12h | DONE |
+| TICKET-011 | Return/Reversal Processing | Phase 2 | P0 | 6h | DONE |
 | TICKET-012 | Programmatic Data Seeding | Phase 3 | P1 | 6h | TODO |
 | TICKET-013 | Test Suite | Phase 3 | P0 | 20h | TODO |
 | TICKET-014 | Demo Script and Makefile | Phase 3 | P0 | 6h | TODO |

@@ -23,6 +23,10 @@
 
 # Cursor / debug
 .cursor/
+.claude/
+
+# Build output
+/server
 
 # IDE and OS
 .idea/

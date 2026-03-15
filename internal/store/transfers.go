@@ -36,6 +36,16 @@ func UpdateTransferStatus(db *sql.DB, id string, status domain.State) error {
 	return nil
 }
 
+// UpdateTransferStatusTx sets status and updated_at using an existing transaction.
+func UpdateTransferStatusTx(tx *sql.Tx, id string, status domain.State) error {
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	_, err := tx.Exec("UPDATE transfers SET status = ?, updated_at = ? WHERE id = ?", string(status), now, id)
+	if err != nil {
+		return fmt.Errorf("store: update transfer status (tx): %w", err)
+	}
+	return nil
+}
+
 // UpdateTransferVendor sets vendor-related fields after step 1.
 func UpdateTransferVendor(db *sql.DB, id, vendorTxnID, checkNumber, micrRouting, micrAccount string, riskScore int) error {
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
@@ -113,6 +123,19 @@ func GetTransfer(db *sql.DB, id string) (*domain.Transfer, error) {
 	return t, nil
 }
 
+// GetTransferTx loads a transfer by ID within an existing transaction. Returns ErrNotFound if not found.
+func GetTransferTx(tx *sql.Tx, id string) (*domain.Transfer, error) {
+	q := `SELECT ` + transferColumns + ` FROM transfers WHERE id = ?`
+	t, err := scanTransfer(tx.QueryRow(q, id))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("store: get transfer %s: %w", id, err)
+	}
+	return t, nil
+}
+
 // TransferFilters holds optional query filters for ListTransfers.
 type TransferFilters struct {
 	Status    string
@@ -177,4 +200,34 @@ func ListTransfers(db *sql.DB, f TransferFilters) ([]*domain.Transfer, error) {
 		out = append(out, t)
 	}
 	return out, nil
+}
+
+// ListUnbatchedFundsPostedInTx returns all transfers with status FundsPosted and no settlement_batch_id.
+// Must be called within an active transaction to avoid double-batching.
+func ListUnbatchedFundsPostedInTx(tx *sql.Tx) ([]*domain.Transfer, error) {
+	q := `SELECT ` + transferColumns + ` FROM transfers WHERE status = ? AND (settlement_batch_id IS NULL OR settlement_batch_id = '') ORDER BY created_at ASC`
+	rows, err := tx.Query(q, string(domain.StateFundsPosted))
+	if err != nil {
+		return nil, fmt.Errorf("store: list unbatched funds posted: %w", err)
+	}
+	defer rows.Close()
+	var out []*domain.Transfer
+	for rows.Next() {
+		t, err := scanTransfer(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, nil
+}
+
+// UpdateTransferSettlementBatch sets settlement_batch_id and updated_at for a transfer.
+func UpdateTransferSettlementBatch(tx *sql.Tx, transferID, batchID string) error {
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	_, err := tx.Exec("UPDATE transfers SET settlement_batch_id = ?, updated_at = ? WHERE id = ?", batchID, now, transferID)
+	if err != nil {
+		return fmt.Errorf("store: update transfer settlement batch: %w", err)
+	}
+	return nil
 }
