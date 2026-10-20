@@ -11,7 +11,7 @@ A complete mobile check deposit processing system built as a single Go binary wi
 ## How to Run
 
 ```bash
-# Prerequisites: Go 1.21+, CGO-enabled C compiler, jq (for demo)
+# Prerequisites: Go 1.22+, CGO-enabled C compiler, jq (for demo)
 
 # Clone and start
 git clone https://github.com/alediez2048/apex.git

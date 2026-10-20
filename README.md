@@ -1,11 +1,11 @@
 # Apex Mobile Check Deposit System
 
-A mobile check deposit processing system built for Apex Fintech Services. Single Go binary with embedded web UI, SQLite persistence, double-entry ledger, deterministic vendor simulation, and X9 ICL-structured settlement output.
+A mobile check deposit processing system, built for the Apex Fintech Solutions challenger project brief (an independent submission, not an Apex product). Single Go binary with embedded web UI, SQLite persistence, double-entry ledger, deterministic vendor simulation, and X9 ICL-structured settlement output.
 
 ## Quick Start
 
 ```bash
-# Prerequisites: Go 1.21+, jq (for demo script)
+# Prerequisites: Go 1.22+, jq (for demo script)
 git clone https://github.com/alediez2048/apex.git
 cd apex
 

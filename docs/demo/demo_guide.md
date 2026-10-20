@@ -468,4 +468,4 @@ Run through Acts 1-6 using either the automated script or the web UI walkthrough
 
 ---
 
-*Demo Guide v1.0 — Mobile Check Deposit System — Apex Fintech Services — March 2026*
+*Demo Guide v1.0 — Mobile Check Deposit System — Apex Fintech Solutions — March 2026*

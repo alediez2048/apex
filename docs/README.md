@@ -1,6 +1,6 @@
 # Documentation Index
 
-Mobile Check Deposit System — Apex Fintech Services
+Mobile Check Deposit System — Apex Fintech Solutions
 
 ---
 
