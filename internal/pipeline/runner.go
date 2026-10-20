@@ -141,10 +141,7 @@ func stepFunding(ctx context.Context, deps Deps, t *domain.Transfer, apiKey stri
 
 	// Step 3: Approved → FundsPosted (ledger post)
 	logStep(deps.DB, t.ID, 3, "ledger_posting", "Continue", "system")
-	if err := ledger.Post(ctx, deps.DB, t.ID, fundCtx.OmnibusID, fundCtx.Investor.AccountID, int64(t.Amount), "FREE"); err != nil {
-		return nil, fmt.Errorf("pipeline: ledger post: %w", err)
-	}
-	if err := transition(deps.DB, t, domain.StateFundsPosted, "system", "ledger posted"); err != nil {
+	if err := postFundsAndTransition(ctx, deps.DB, t, fundCtx.OmnibusID, fundCtx.Investor.AccountID); err != nil {
 		return nil, err
 	}
 	logEvent(deps.DB, t.ID, "LEDGER_POSTED", "system", map[string]interface{}{
@@ -155,6 +152,46 @@ func stepFunding(ctx context.Context, deps Deps, t *domain.Transfer, apiKey stri
 	logStep(deps.DB, t.ID, 3, "ledger_posting", "HaltApproved", "system")
 
 	return &Result{Action: HaltApproved, Status: string(domain.StateFundsPosted), Reason: "funds posted"}, nil
+}
+
+// postFundsAndTransition writes the ledger pair, the FundsPosted status and its
+// STATE_TRANSITION event in one transaction, so a crash can't leave money posted
+// on a transfer that still reads Approved.
+func postFundsAndTransition(ctx context.Context, db *sql.DB, t *domain.Transfer, fromAccountID, toAccountID string) error {
+	to := domain.StateFundsPosted
+	if err := domain.Transition(t.Status, to); err != nil {
+		return fmt.Errorf("pipeline: %s → %s: %w", t.Status, to, err)
+	}
+	payload, err := json.Marshal(domain.StateTransitionPayload{
+		FromState: string(t.Status),
+		ToState:   string(to),
+		Actor:     "system",
+		Reason:    "ledger posted",
+	})
+	if err != nil {
+		return fmt.Errorf("pipeline: marshal transition: %w", err)
+	}
+
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return fmt.Errorf("pipeline: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := ledger.PostPairTx(tx, t.ID, fromAccountID, toAccountID, int64(t.Amount), "FREE"); err != nil {
+		return fmt.Errorf("pipeline: ledger post: %w", err)
+	}
+	if err := store.UpdateTransferStatusTx(tx, t.ID, to); err != nil {
+		return fmt.Errorf("pipeline: update status: %w", err)
+	}
+	if err := store.InsertEventTx(tx, t.ID, domain.EventTypeStateTransition, "system", string(payload)); err != nil {
+		return fmt.Errorf("pipeline: insert event: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("pipeline: commit: %w", err)
+	}
+	t.Status = to
+	return nil
 }
 
 // transition validates + persists a state change and logs STATE_TRANSITION event.

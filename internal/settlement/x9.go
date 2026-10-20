@@ -21,11 +21,11 @@ type FileHeader struct {
 
 // CheckDetail is the check detail record (amount in cents, MICR).
 type CheckDetail struct {
-	Amount          int64  `json:"amount"`
-	MICRRouting     string `json:"micr_routing"`
-	MICROnUs        string `json:"micr_on_us"`
+	Amount           int64  `json:"amount"`
+	MICRRouting      string `json:"micr_routing"`
+	MICROnUs         string `json:"micr_on_us"`
 	PayorBankRouting string `json:"payor_bank_routing"`
-	ItemSequence    string `json:"item_sequence"`
+	ItemSequence     string `json:"item_sequence"`
 }
 
 // ImageView references front/back image.
@@ -53,9 +53,9 @@ type Bundle struct {
 
 // CashLetterHeader is the cash letter header.
 type CashLetterHeader struct {
-	CollectionType      string `json:"collection_type"`
-	DestinationRouting  string `json:"destination_routing"`
-	RecordType          string `json:"record_type"`
+	CollectionType     string `json:"collection_type"`
+	DestinationRouting string `json:"destination_routing"`
+	RecordType         string `json:"record_type"`
 }
 
 // CashLetter contains bundles.
@@ -66,9 +66,9 @@ type CashLetter struct {
 
 // FileControl is the file-level control totals.
 type FileControl struct {
-	TotalAmount  int64 `json:"total_amount"`
-	ItemCount    int   `json:"item_count"`
-	BundleCount  int   `json:"bundle_count"`
+	TotalAmount int64 `json:"total_amount"`
+	ItemCount   int   `json:"item_count"`
+	BundleCount int   `json:"bundle_count"`
 }
 
 // X9File is the full X9 ICL-structured JSON.

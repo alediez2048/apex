@@ -216,14 +216,14 @@ func newTransferID() string {
 
 func transferToJSON(t *domain.Transfer) map[string]interface{} {
 	m := map[string]interface{}{
-		"transfer_id":        t.ID,
+		"transfer_id":         t.ID,
 		"investor_account_id": t.InvestorAccountID,
-		"correspondent_id":   t.CorrespondentID,
-		"amount_cents":       int64(t.Amount),
-		"status":             string(t.Status),
-		"check_number":       t.CheckNumber,
-		"created_at":         t.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		"updated_at":         t.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		"correspondent_id":    t.CorrespondentID,
+		"amount_cents":        int64(t.Amount),
+		"status":              string(t.Status),
+		"check_number":        t.CheckNumber,
+		"created_at":          t.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		"updated_at":          t.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
 	if t.VendorTransactionID != "" {
 		m["vendor_transaction_id"] = t.VendorTransactionID

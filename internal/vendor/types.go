@@ -15,11 +15,11 @@ const (
 
 // ScenarioHeader values for X-Vendor-Scenario override.
 const (
-	ScenarioCleanPass       = "CLEAN_PASS"
-	ScenarioIQABlur         = "IQA_BLUR"
-	ScenarioIQAGlare        = "IQA_GLARE"
-	ScenarioMICRFailure     = "MICR_FAILURE"
-	ScenarioDuplicate       = "DUPLICATE"
+	ScenarioCleanPass      = "CLEAN_PASS"
+	ScenarioIQABlur        = "IQA_BLUR"
+	ScenarioIQAGlare       = "IQA_GLARE"
+	ScenarioMICRFailure    = "MICR_FAILURE"
+	ScenarioDuplicate      = "DUPLICATE"
 	ScenarioAmountMismatch = "AMOUNT_MISMATCH"
 )
 

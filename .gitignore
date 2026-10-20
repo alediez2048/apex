@@ -34,3 +34,7 @@
 .DS_Store
 *.swp
 *.swo
+
+# Local AI tooling
+.cursor/
+.claude/

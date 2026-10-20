@@ -5,9 +5,9 @@ type Action int
 
 const (
 	Continue     Action = iota // run next step
-	HaltRejected              // terminal failure — deposit rejected
-	HaltFlagged               // needs operator review (stays in Analyzing)
-	HaltApproved              // reached FundsPosted (final good state for pipeline)
+	HaltRejected               // terminal failure — deposit rejected
+	HaltFlagged                // needs operator review (stays in Analyzing)
+	HaltApproved               // reached FundsPosted (final good state for pipeline)
 )
 
 func (a Action) String() string {

@@ -6,7 +6,7 @@ Apex Mobile Check Deposit System
 
 ## Summary
 
-A complete mobile check deposit processing system built as a single Go binary with an embedded web UI, SQLite persistence, and zero external dependencies. The system implements the full deposit lifecycle — submission, vendor validation (7 deterministic scenarios), funding business rules (limits, eligibility, 30-day duplicate detection), double-entry ledger posting with balanced DEBIT/CREDIT pairs, risk-scored operator review queue with check image display, X9 ICL-structured JSON settlement batching with EOD cutoff logic, and post-settlement return/reversal processing with $30 fee application. All financial mutations execute within single database transactions to preserve ledger invariants.
+A complete mobile check deposit processing system built as a single Go binary with an embedded web UI, SQLite persistence, and no external services to run. The system implements the full deposit lifecycle — submission, vendor validation (7 deterministic scenarios), funding business rules (limits, eligibility, 30-day duplicate detection), double-entry ledger posting with balanced DEBIT/CREDIT pairs, risk-scored operator review queue with check image display, X9 ICL-structured JSON settlement batching with EOD cutoff logic, and post-settlement return/reversal processing with $30 fee application. All financial mutations execute within single database transactions to preserve ledger invariants.
 
 ## How to Run
 

@@ -67,13 +67,13 @@ func StatsHandler(cfg *config.Config, db *sql.DB) http.HandlerFunc {
 		WriteJSON(w, http.StatusOK, map[string]interface{}{
 			"deposits_by_state":         byState,
 			"queue_count":               queueCount,
-			"gating_correctness":         gatingCorrectness,
-			"settlement_reconciliation":  "N/A",
-			"vendor_scenario_coverage":   vendorScenarioCoverage,
-			"operator_queue_response":    "Pass",
-			"return_accuracy":            "N/A",
-			"test_coverage":              "N/A",
-			"setup_time":                 "Pass",
+			"gating_correctness":        gatingCorrectness,
+			"settlement_reconciliation": "N/A",
+			"vendor_scenario_coverage":  vendorScenarioCoverage,
+			"operator_queue_response":   "Pass",
+			"return_accuracy":           "N/A",
+			"test_coverage":             "N/A",
+			"setup_time":                "Pass",
 		})
 	}
 }

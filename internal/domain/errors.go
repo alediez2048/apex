@@ -3,14 +3,14 @@ package domain
 // Error codes for API and logging (PRD §7.7). Constants are the machine-readable codes.
 const (
 	// VENDOR — vendor stub / image validation
-	CodeVendorIQABlur         = "VENDOR.IQA_BLUR"
-	CodeVendorIQAGlare        = "VENDOR.IQA_GLARE"
-	CodeVendorMICRFailure     = "VENDOR.MICR_FAILURE"
-	CodeVendorDuplicate       = "VENDOR.DUPLICATE"
-	CodeVendorAmountMismatch  = "VENDOR.AMOUNT_MISMATCH"
+	CodeVendorIQABlur        = "VENDOR.IQA_BLUR"
+	CodeVendorIQAGlare       = "VENDOR.IQA_GLARE"
+	CodeVendorMICRFailure    = "VENDOR.MICR_FAILURE"
+	CodeVendorDuplicate      = "VENDOR.DUPLICATE"
+	CodeVendorAmountMismatch = "VENDOR.AMOUNT_MISMATCH"
 	// FUNDING — business rules / account resolution
-	CodeFundingOverLimit      = "FUNDING.OVER_LIMIT"
-	CodeFundingDuplicate      = "FUNDING.DUPLICATE"
+	CodeFundingOverLimit       = "FUNDING.OVER_LIMIT"
+	CodeFundingDuplicate       = "FUNDING.DUPLICATE"
 	CodeFundingAccountNotFound = "FUNDING.ACCOUNT_NOT_FOUND"
 	CodeFundingIneligible      = "FUNDING.INELIGIBLE"
 	// STATE — lifecycle / transitions

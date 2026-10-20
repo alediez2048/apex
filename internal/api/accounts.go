@@ -55,7 +55,7 @@ func getBalance(w http.ResponseWriter, r *http.Request, db *sql.DB, accountID st
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]interface{}{
-		"account_id":   accountID,
+		"account_id":    accountID,
 		"balance_cents": bal,
 	})
 }

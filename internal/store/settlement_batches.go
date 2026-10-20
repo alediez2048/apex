@@ -22,9 +22,9 @@ func InsertSettlementBatch(tx *sql.Tx, id, settlementDate, fileJSON string) erro
 // SettlementBatch holds settlement_batches row data.
 type SettlementBatch struct {
 	ID             string
-	SettlementDate  string
-	FileJSON        string
-	CreatedAt       string
+	SettlementDate string
+	FileJSON       string
+	CreatedAt      string
 }
 
 // GetBatch returns a batch by ID. Returns ErrNotFound if not found.

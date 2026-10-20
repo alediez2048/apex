@@ -1,6 +1,6 @@
 # Apex Mobile Check Deposit System
 
-A production-grade mobile check deposit processing system built for Apex Fintech Services. Single Go binary with embedded web UI, SQLite persistence, double-entry ledger, deterministic vendor simulation, and X9 ICL-structured settlement output.
+A mobile check deposit processing system built for Apex Fintech Services. Single Go binary with embedded web UI, SQLite persistence, double-entry ledger, deterministic vendor simulation, and X9 ICL-structured settlement output.
 
 ## Quick Start
 
@@ -114,7 +114,7 @@ See [reports/](reports/) for test coverage and demo results after running `make 
 | `DUP-*` | Rejected | 422 | Duplicate detected |
 | `MISMATCH-*` | Analyzing | 201 | OCR amount mismatch — flagged |
 
-Override any scenario via `X-Vendor-Scenario` header: `CLEAN_PASS`, `IQA_BLUR`, `IQA_GLARE`, `MICR_FAILURE`, `DUPLICATE`, `AMOUNT_MISMATCH`.
+On the standalone vendor stub (`/api/v1/vendor/validate`), you can force a scenario with the `X-Vendor-Scenario` header. The deposit pipeline itself picks the scenario from the account prefix above. Values: `CLEAN_PASS`, `IQA_BLUR`, `IQA_GLARE`, `MICR_FAILURE`, `DUPLICATE`, `AMOUNT_MISMATCH`.
 
 ## Disclaimers
 

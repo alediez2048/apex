@@ -18,11 +18,11 @@ const ReturnFeeCents int64 = 3000
 
 // Result holds the outcome of a successful return for the API response.
 type Result struct {
-	TransferID         string `json:"transfer_id"`
-	Status             string `json:"status"`
+	TransferID          string `json:"transfer_id"`
+	Status              string `json:"status"`
 	ReversalAmountCents int64  `json:"reversal_amount_cents"`
-	FeeCents           int64  `json:"fee_cents"`
-	NetDebitCents      int64  `json:"net_debit_cents"`
+	FeeCents            int64  `json:"fee_cents"`
+	NetDebitCents       int64  `json:"net_debit_cents"`
 }
 
 // ProcessReturn handles the full return/reversal flow in a single database transaction:

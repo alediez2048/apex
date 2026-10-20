@@ -9,11 +9,11 @@ import (
 
 // Config holds application configuration from env and YAML.
 type Config struct {
-	Port          string
-	Env           string
-	DBPath        string
+	Port           string
+	Env            string
+	DBPath         string
 	Correspondents []Correspondent
-	Investors     []Investor
+	Investors      []Investor
 }
 
 // Correspondent is a firm with deposit limits and omnibus account.
@@ -35,7 +35,7 @@ type Investor struct {
 }
 
 type correspondentsFile struct {
-	OmnibusAccounts []string       `yaml:"omnibus_accounts"`
+	OmnibusAccounts []string        `yaml:"omnibus_accounts"`
 	Correspondents  []Correspondent `yaml:"correspondents"`
 }
 
