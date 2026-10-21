@@ -15,7 +15,7 @@ import (
 	"github.com/alediez2048/apex/internal/store"
 )
 
-// SettlementHandler handles /api/v1/settlement/* routes (TICKET-010).
+// SettlementHandler handles /api/v1/settlement/* routes.
 // POST /api/v1/settlement/batches [?as_of=<RFC3339>] — generate batch.
 // GET /api/v1/settlement/batches/{id} — get batch file JSON.
 // GET /api/v1/settlement/batches/{id}/items — list transfers in batch.
@@ -130,7 +130,7 @@ func getSettlementBatchItems(w http.ResponseWriter, db *sql.DB, batchID string) 
 	WriteJSON(w, http.StatusOK, out)
 }
 
-// ReturnsHandler handles /api/v1/returns routes (TICKET-011).
+// ReturnsHandler handles /api/v1/returns routes.
 // POST /api/v1/returns — process a check return/reversal.
 func ReturnsHandler(cfg *config.Config, db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

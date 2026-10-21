@@ -8,7 +8,7 @@ import (
 	"github.com/alediez2048/apex/internal/domain"
 )
 
-// DepositValidateRequest is the minimal body for funding-only validation (TICKET-005).
+// DepositValidateRequest is the minimal body for funding-only validation.
 type DepositValidateRequest struct {
 	AmountCents int64  `json:"amount_cents"`
 	MICRRouting string `json:"micr_routing,omitempty"`

@@ -1,6 +1,6 @@
 package vendor
 
-// HeaderScenario is the optional override header (PRD TICKET-004).
+// HeaderScenario is the optional override header.
 const HeaderScenario = "X-Vendor-Scenario"
 
 // Outcome values returned by the stub.

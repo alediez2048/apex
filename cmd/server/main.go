@@ -73,7 +73,7 @@ func main() {
 	mux.HandleFunc("/api/v1/deposits/", api.DepositsHandler(cfg, db, pipeDeps))
 	mux.HandleFunc("/api/v1/deposits", api.DepositsHandler(cfg, db, pipeDeps))
 
-	// Funding validation (standalone, from TICKET-005)
+	// Funding validation (standalone)
 	mux.HandleFunc("/api/v1/deposits/validate", funding.Handler(fundingEngine))
 
 	// Vendor validation (standalone)
@@ -101,14 +101,14 @@ func main() {
 	// Accounts: balance/ledger
 	mux.HandleFunc("/api/v1/accounts/", api.AccountsHandler(cfg, db))
 
-	// Settlement (TICKET-010)
+	// Settlement
 	mux.HandleFunc("/api/v1/settlement/", api.SettlementHandler(cfg, db))
 
-	// Returns (TICKET-011)
+	// Returns
 	mux.HandleFunc("/api/v1/returns/", api.ReturnsHandler(cfg, db))
 	mux.HandleFunc("/api/v1/returns", api.ReturnsHandler(cfg, db))
 
-	// Stats for dashboard (TICKET-009)
+	// Stats for dashboard
 	mux.HandleFunc("/api/v1/stats/dashboard", api.StatsHandler(cfg, db))
 
 	// Health
@@ -118,7 +118,7 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	// Embedded web UI (TICKET-009): SPA and static assets.
+	// Embedded web UI: SPA and static assets.
 	// Go's ServeMux matches "/" only for exact path "/"; register each route explicitly.
 	webRoot, _ := fs.Sub(webFS, "web")
 	wh := webHandler(cfg, webRoot)

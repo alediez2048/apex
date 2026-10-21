@@ -3,7 +3,7 @@ package domain
 import "time"
 
 // Transfer is the domain model for a deposit lifecycle (mirrors transfers table; PRD §7.2).
-// Used by TICKET-004+ as the object passed through the pipeline.
+// Used as the object passed through the pipeline.
 type Transfer struct {
 	ID                  string
 	InvestorAccountID   string

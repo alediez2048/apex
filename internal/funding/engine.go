@@ -10,7 +10,7 @@ import (
 
 const duplicateWindow = 30 * 24 * time.Hour
 
-// Engine validates API key, resolves accounts, and runs business rules (TICKET-005).
+// Engine validates API key, resolves accounts, and runs business rules.
 type Engine struct {
 	cfg             *config.Config
 	byAPIKey        map[string]config.Investor

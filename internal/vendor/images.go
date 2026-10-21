@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 )
 
-// EnsureStubImages writes minimal placeholder PNGs under baseDir for demo/tests (TICKET-004).
+// EnsureStubImages writes minimal placeholder PNGs under baseDir for demo/tests.
 // Not tied to a specific transfer ID yet; pipeline will write per-transfer images later.
 func EnsureStubImages(baseDir string) error {
 	if baseDir == "" {

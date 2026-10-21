@@ -559,7 +559,7 @@ func TestAccounts_Ledger(t *testing.T) {
 	}
 }
 
-// --- Settlement (TICKET-010) ---
+// --- Settlement ---
 
 func TestSettlement_PostBatches_NoAuth_401(t *testing.T) {
 	cfg := testCfg()
@@ -731,7 +731,7 @@ func TestSettlement_GetBatchItems_200(t *testing.T) {
 	}
 }
 
-// --- Returns (TICKET-011) ---
+// --- Returns ---
 
 func TestReturns_FundsPosted_200(t *testing.T) {
 	cfg := testCfg()
@@ -924,7 +924,7 @@ func TestReturns_LedgerInvariant(t *testing.T) {
 }
 
 // =============================================================================
-// PRD Test Manifest (TICKET-013) — named integration tests per PRD §9 lines 720-741
+// PRD Test Manifest — named integration tests per PRD §9 lines 720-741
 // =============================================================================
 
 // createDeposit is a test helper: POST /api/v1/deposits with given account/amount/token.

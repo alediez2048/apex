@@ -31,7 +31,7 @@ var validTransitions = map[State][]State{
 }
 
 // Transition validates that moving from `from` to `to` is allowed. Returns ErrInvalidTransition if not.
-// It does not write to deposit_events; the pipeline/handler must insert a STATE_TRANSITION event after a valid transition (TICKET-007).
+// It does not write to deposit_events; the pipeline/handler must insert a STATE_TRANSITION event after a valid transition.
 func Transition(from, to State) error {
 	allowed := validTransitions[from]
 	for _, s := range allowed {
