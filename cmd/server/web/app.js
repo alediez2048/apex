@@ -7,22 +7,18 @@
       ? window.DEMO_API_KEY
       : (sessionStorage.getItem('api_key') || '');
   }
+  // The operator recorded on approvals and rejections comes from the API key
+  // on the server; this is only for display.
   function getOperatorId() {
-    return sessionStorage.getItem('operator_id') || '';
-  }
-  function setOperatorId(id) {
-    sessionStorage.setItem('operator_id', id);
+    return window.DEMO_OPERATOR_ID && window.DEMO_OPERATOR_ID !== '__DEMO_OPERATOR_ID__'
+      ? window.DEMO_OPERATOR_ID
+      : (sessionStorage.getItem('operator_id') || '');
   }
 
   function headers() {
     const h = { 'Content-Type': 'application/json' };
     const key = getApiKey();
     if (key) h['Authorization'] = 'Bearer ' + key;
-    return h;
-  }
-  function headersWithOperator(opId) {
-    const h = headers();
-    if (opId) h['X-Operator-ID'] = opId;
     return h;
   }
 
@@ -124,7 +120,7 @@
     }
     const opId = getOperatorId();
     const sorted = (Array.isArray(list) ? list : []).slice().sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0));
-    const opBar = '<div class="operator-bar">Operator ID: <input type="text" id="operator-id" value="' + (opId || 'op1') + '" placeholder="op1"> <button type="button" onclick="app.saveOperatorId()">Save</button></div>';
+    const opBar = '<div class="operator-bar">Signed in as operator <strong>' + escapeHtml(opId || 'unknown') + '</strong></div>';
     let html = '<div class="container"><h1>Operator queue</h1>' + opBar + '<p><button onclick="app.refreshRoute()">Refresh queue</button></p>';
     if (sorted.length === 0) {
       html += '<p class="muted">No flagged deposits.</p></div>';
@@ -160,27 +156,23 @@
       document.querySelectorAll('.queue-item').forEach(function (el) {
         const id = el.getAttribute('data-transfer-id');
         el.querySelector('button.approve').onclick = function () {
-          const opId = document.getElementById('operator-id').value || getOperatorId();
-          if (!opId) { alert('Set Operator ID first'); return; }
           const contrib = el.querySelector('select.contribution-type').value;
           fetch(API_BASE + '/api/v1/operator/queue/' + id + '/approve', {
             method: 'POST',
-            headers: headersWithOperator(opId),
-            body: JSON.stringify({ operator_id: opId, contribution_type: contrib || undefined }),
+            headers: headers(),
+            body: JSON.stringify({ contribution_type: contrib || undefined }),
           }).then(function (r) {
             if (r.ok) app.refreshRoute();
             else return r.json().then(function (d) { throw new Error(d.message || r.statusText); });
           }).catch(function (e) { alert(e.message); });
         };
         el.querySelector('button.reject').onclick = function () {
-          const opId = document.getElementById('operator-id').value || getOperatorId();
-          if (!opId) { alert('Set Operator ID first'); return; }
           const reason = prompt('Reject reason:', 'Rejected by operator');
           if (reason == null) return;
           fetch(API_BASE + '/api/v1/operator/queue/' + id + '/reject', {
             method: 'POST',
-            headers: headersWithOperator(opId),
-            body: JSON.stringify({ operator_id: opId, reason: reason || 'Rejected by operator' }),
+            headers: headers(),
+            body: JSON.stringify({ reason: reason || 'Rejected by operator' }),
           }).then(function (r) {
             if (r.ok) app.refreshRoute();
             else return r.json().then(function (d) { throw new Error(d.message || r.statusText); });
@@ -304,14 +296,8 @@
     render(parsePath());
   }
 
-  function saveOperatorId() {
-    const input = document.getElementById('operator-id');
-    if (input) setOperatorId(input.value);
-  }
-
   window.app = {
     refreshRoute: refreshRoute,
-    saveOperatorId: saveOperatorId,
   };
 
   function init() {

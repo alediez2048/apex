@@ -39,6 +39,18 @@ Maps each PRD-named test scenario to the test function(s) and demo assertion(s) 
 | `TestDeposits_GetNotFound` | GET unknown transfer_id → 404 |
 | `TestDeposits_ListInvalidDate` | Bad date param → 400 |
 
+### Authorization (8 tests, `internal/api/authz_test.go`)
+| Test | Path |
+|------|------|
+| `TestAuthz_InvestorCannotApproveOrReject` | Investor on the review queue → 403, transfer untouched |
+| `TestAuthz_OperatorIdentityComesFromToken` | Spoofed operator_id or X-Operator-ID → 403; decision recorded for the token's operator |
+| `TestAuthz_InvestorSeesOnlyOwnDeposits` | List scoped to own account; other account's transfer → 404 |
+| `TestAuthz_OperatorSeesEveryAccount` | Operator lists and reads every account |
+| `TestAuthz_InvestorCannotDepositIntoAnotherAccount` | Deposit into another account → 403, nothing created |
+| `TestAuthz_AccountsScopedToOwner` | Other account's balance → 403; operator reads any ledger |
+| `TestAuthz_BackOfficeRoutesAreOperatorOnly` | Settlement, returns, dashboard as investor → 403 |
+| `TestValidateRoute_ReturnsResult` | POST /deposits/validate returns the funding result |
+
 ### Deposit CRUD (5 tests)
 | Test | Path |
 |------|------|

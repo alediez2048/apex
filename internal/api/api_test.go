@@ -49,6 +49,9 @@ func testCfg() *config.Config {
 			{AccountID: "PASS-99999", APIKey: "tok_suspended_007", CorrespondentID: "CORR-APEX", Eligible: false, AccountType: "standard"},
 			{AccountID: "MISMATCH-10001", APIKey: "tok_eve_005", CorrespondentID: "CORR-APEX", Eligible: true, AccountType: "standard"},
 		},
+		Operators: []config.Operator{
+			{ID: "op1", Name: "Test operator", APIKey: "tok_ops_001"},
+		},
 	}
 }
 
@@ -404,7 +407,7 @@ func TestOperator_QueueList(t *testing.T) {
 	handler := api.OperatorHandler(cfg, deps)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/operator/queue", nil)
-	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Authorization", "Bearer tok_ops_001")
 	w := httptest.NewRecorder()
 	handler(w, req)
 
@@ -432,7 +435,7 @@ func TestOperator_Approve(t *testing.T) {
 
 	payload := `{"operator_id":"op1"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/operator/queue/tx-approve/approve", bytes.NewBufferString(payload))
-	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Authorization", "Bearer tok_ops_001")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	handler(w, req)
@@ -462,9 +465,9 @@ func TestOperator_Reject(t *testing.T) {
 
 	handler := api.OperatorHandler(cfg, deps)
 
-	payload := `{"operator_id":"op2","reason":"suspicious check"}`
+	payload := `{"operator_id":"op1","reason":"suspicious check"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/operator/queue/tx-reject/reject", bytes.NewBufferString(payload))
-	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Authorization", "Bearer tok_ops_001")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	handler(w, req)
@@ -490,9 +493,9 @@ func TestOperator_RejectWrongState(t *testing.T) {
 
 	handler := api.OperatorHandler(cfg, deps)
 
-	payload := `{"operator_id":"op2","reason":"test"}`
+	payload := `{"operator_id":"op1","reason":"test"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/operator/queue/tx-bad/reject", bytes.NewBufferString(payload))
-	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Authorization", "Bearer tok_ops_001")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	handler(w, req)
@@ -581,7 +584,7 @@ func TestSettlement_PostBatches_NoDeposits_200(t *testing.T) {
 	handler := api.SettlementHandler(cfg, db)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/settlement/batches", nil)
-	req.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	req.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 	w := httptest.NewRecorder()
 	handler(w, req)
 
@@ -603,7 +606,7 @@ func TestSettlement_PostBatches_CreatesBatch_NoDoubleBatch(t *testing.T) {
 	seedTransfer(t, db, "tx-s2", "PASS-10001", "CORR-APEX", 20000, domain.StateFundsPosted)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/settlement/batches", nil)
-	req.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	req.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 	w := httptest.NewRecorder()
 	handler(w, req)
 
@@ -645,7 +648,7 @@ func TestSettlement_GetBatch_404(t *testing.T) {
 	handler := api.SettlementHandler(cfg, db)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/settlement/batches/nonexistent", nil)
-	req.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	req.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 	w := httptest.NewRecorder()
 	handler(w, req)
 
@@ -661,7 +664,7 @@ func TestSettlement_GetBatch_200(t *testing.T) {
 
 	seedTransfer(t, db, "tx-g1", "PASS-10001", "CORR-APEX", 10000, domain.StateFundsPosted)
 	postReq := httptest.NewRequest(http.MethodPost, "/api/v1/settlement/batches", nil)
-	postReq.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	postReq.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 	wPost := httptest.NewRecorder()
 	handler(wPost, postReq)
 	if wPost.Code != http.StatusCreated {
@@ -674,7 +677,7 @@ func TestSettlement_GetBatch_200(t *testing.T) {
 	}
 
 	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/settlement/batches/"+batchID, nil)
-	getReq.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	getReq.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 	wGet := httptest.NewRecorder()
 	handler(wGet, getReq)
 	if wGet.Code != http.StatusOK {
@@ -700,7 +703,7 @@ func TestSettlement_GetBatchItems_200(t *testing.T) {
 
 	seedTransfer(t, db, "tx-i1", "PASS-10001", "CORR-APEX", 5000, domain.StateFundsPosted)
 	postReq := httptest.NewRequest(http.MethodPost, "/api/v1/settlement/batches", nil)
-	postReq.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	postReq.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 	wPost := httptest.NewRecorder()
 	handler(wPost, postReq)
 	if wPost.Code != http.StatusCreated {
@@ -713,7 +716,7 @@ func TestSettlement_GetBatchItems_200(t *testing.T) {
 	}
 
 	itemsReq := httptest.NewRequest(http.MethodGet, "/api/v1/settlement/batches/"+batchID+"/items", nil)
-	itemsReq.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	itemsReq.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 	wItems := httptest.NewRecorder()
 	handler(wItems, itemsReq)
 	if wItems.Code != http.StatusOK {
@@ -746,7 +749,7 @@ func TestReturns_FundsPosted_200(t *testing.T) {
 
 	body := `{"transfer_id":"tx-r1","reason":"NSF"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/returns", bytes.NewBufferString(body))
-	req.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	req.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 	w := httptest.NewRecorder()
 	handler(w, req)
 
@@ -798,7 +801,7 @@ func TestReturns_Completed_200(t *testing.T) {
 
 	body := `{"transfer_id":"tx-r2","reason":"NSF"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/returns", bytes.NewBufferString(body))
-	req.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	req.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 	w := httptest.NewRecorder()
 	handler(w, req)
 
@@ -820,7 +823,7 @@ func TestReturns_InvalidState_409(t *testing.T) {
 
 	body := `{"transfer_id":"tx-r3","reason":"NSF"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/returns", bytes.NewBufferString(body))
-	req.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	req.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 	w := httptest.NewRecorder()
 	handler(w, req)
 
@@ -842,7 +845,7 @@ func TestReturns_DoubleReturn_409(t *testing.T) {
 
 	body := `{"transfer_id":"tx-r3b","reason":"NSF"}`
 	req1 := httptest.NewRequest(http.MethodPost, "/api/v1/returns", bytes.NewBufferString(body))
-	req1.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	req1.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 
 	w1 := httptest.NewRecorder()
 	handler(w1, req1)
@@ -851,7 +854,7 @@ func TestReturns_DoubleReturn_409(t *testing.T) {
 	}
 
 	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/returns", bytes.NewBufferString(body))
-	req2.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	req2.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 	w2 := httptest.NewRecorder()
 	handler(w2, req2)
 	if w2.Code != http.StatusConflict {
@@ -870,7 +873,7 @@ func TestReturns_NotFound_404(t *testing.T) {
 
 	body := `{"transfer_id":"tx-nonexistent","reason":"NSF"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/returns", bytes.NewBufferString(body))
-	req.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	req.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 	w := httptest.NewRecorder()
 	handler(w, req)
 
@@ -891,7 +894,7 @@ func TestReturns_LedgerInvariant(t *testing.T) {
 
 	body := `{"transfer_id":"tx-r4","reason":"NSF"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/returns", bytes.NewBufferString(body))
-	req.Header.Set("Authorization", "Bearer "+cfg.Investors[0].APIKey)
+	req.Header.Set("Authorization", "Bearer "+cfg.Operators[0].APIKey)
 	w := httptest.NewRecorder()
 	handler(w, req)
 
@@ -960,7 +963,7 @@ func TestIntegration_HappyPath(t *testing.T) {
 
 	// Settle
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/settlement/batches", nil)
-	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Authorization", "Bearer tok_ops_001")
 	w := httptest.NewRecorder()
 	settlementH(w, req)
 	if w.Code != http.StatusCreated {
@@ -1133,7 +1136,7 @@ func TestIntegration_OperatorApprove(t *testing.T) {
 	operatorH := api.OperatorHandler(cfg, deps)
 	payload := `{"operator_id":"op1"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/operator/queue/"+tid+"/approve", bytes.NewBufferString(payload))
-	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Authorization", "Bearer tok_ops_001")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	operatorH(w, req)
@@ -1161,9 +1164,9 @@ func TestIntegration_OperatorReject(t *testing.T) {
 	tid := m["transfer_id"].(string)
 
 	operatorH := api.OperatorHandler(cfg, deps)
-	payload := `{"operator_id":"op2","reason":"suspicious"}`
+	payload := `{"operator_id":"op1","reason":"suspicious"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/operator/queue/"+tid+"/reject", bytes.NewBufferString(payload))
-	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Authorization", "Bearer tok_ops_001")
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	operatorH(w, req)
@@ -1195,7 +1198,7 @@ func TestIntegration_ReturnAndReversal(t *testing.T) {
 	returnsH := api.ReturnsHandler(cfg, db)
 	body := `{"transfer_id":"` + tid + `","reason":"NSF"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/returns", bytes.NewBufferString(body))
-	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Authorization", "Bearer tok_ops_001")
 	w := httptest.NewRecorder()
 	returnsH(w, req)
 
@@ -1228,7 +1231,7 @@ func TestIntegration_SettlementFileContents(t *testing.T) {
 
 	// Generate batch
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/settlement/batches", nil)
-	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Authorization", "Bearer tok_ops_001")
 	w := httptest.NewRecorder()
 	settlementH(w, req)
 
@@ -1309,7 +1312,7 @@ func TestLedgerInvariant_DebitsEqualCredits(t *testing.T) {
 	// Return one
 	body := `{"transfer_id":"` + tid1 + `","reason":"NSF"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/returns", bytes.NewBufferString(body))
-	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Authorization", "Bearer tok_ops_001")
 	w := httptest.NewRecorder()
 	returnsH(w, req)
 	if w.Code != http.StatusOK {
@@ -1353,7 +1356,7 @@ func TestSettlement_NoDoubleBatching(t *testing.T) {
 
 	// First batch
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/settlement/batches", nil)
-	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Authorization", "Bearer tok_ops_001")
 	w1 := httptest.NewRecorder()
 	settlementH(w1, req)
 	if w1.Code != http.StatusCreated {
@@ -1385,7 +1388,7 @@ func TestReturnOnCompletedDeposit(t *testing.T) {
 
 	body := `{"transfer_id":"tx-late","reason":"UNAUTHORIZED"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/returns", bytes.NewBufferString(body))
-	req.Header.Set("Authorization", "Bearer tok_alice_001")
+	req.Header.Set("Authorization", "Bearer tok_ops_001")
 	w := httptest.NewRecorder()
 	handler(w, req)
 

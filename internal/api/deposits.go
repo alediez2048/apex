@@ -23,7 +23,7 @@ import (
 // GET /api/v1/deposits/{id} → get, GET .../history → history, GET .../images/{side} → image.
 func DepositsHandler(cfg *config.Config, db *sql.DB, deps pipeline.Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		apiKey, ok := RequireAuth(w, r, cfg)
+		principal, ok := Authenticate(w, r, cfg)
 		if !ok {
 			return
 		}
@@ -34,21 +34,23 @@ func DepositsHandler(cfg *config.Config, db *sql.DB, deps pipeline.Deps) http.Ha
 		if path == "" {
 			switch r.Method {
 			case http.MethodGet:
-				listDeposits(w, r, db)
+				listDeposits(w, r, db, principal)
 			case http.MethodPost:
-				createDeposit(w, r, cfg, db, deps, apiKey)
+				createDeposit(w, r, cfg, db, deps, principal)
 			default:
 				WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", "", nil)
 			}
 			return
 		}
 
-		if path == "validate" {
-			return
-		}
-
 		segments := strings.Split(path, "/")
 		id := segments[0]
+
+		// Investors can only see their own transfers. A transfer on another
+		// account answers 404, so its existence isn't revealed.
+		if !canSeeTransfer(w, db, principal, id) {
+			return
+		}
 
 		if len(segments) == 1 {
 			if r.Method != http.MethodGet {
@@ -82,13 +84,20 @@ func DepositsHandler(cfg *config.Config, db *sql.DB, deps pipeline.Deps) http.Ha
 	}
 }
 
-func listDeposits(w http.ResponseWriter, r *http.Request, db *sql.DB) {
+func listDeposits(w http.ResponseWriter, r *http.Request, db *sql.DB, p *Principal) {
 	q := r.URL.Query()
 	filters := store.TransferFilters{
 		Status:    q.Get("status"),
 		AccountID: q.Get("account"),
 		From:      q.Get("from"),
 		To:        q.Get("to"),
+	}
+	if !p.IsOperator() {
+		if filters.AccountID != "" && filters.AccountID != p.AccountID {
+			WriteError(w, http.StatusForbidden, "FORBIDDEN", "investors can only list their own deposits", "", nil)
+			return
+		}
+		filters.AccountID = p.AccountID
 	}
 	if err := filters.ValidateDateFilters(); err != nil {
 		WriteError(w, http.StatusBadRequest, "BAD_REQUEST", err.Error(), "", nil)
@@ -103,13 +112,17 @@ func listDeposits(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	WriteJSON(w, http.StatusOK, transfersToJSON(transfers))
 }
 
-func createDeposit(w http.ResponseWriter, r *http.Request, cfg *config.Config, db *sql.DB, deps pipeline.Deps, apiKey string) {
+func createDeposit(w http.ResponseWriter, r *http.Request, cfg *config.Config, db *sql.DB, deps pipeline.Deps, p *Principal) {
 	var body struct {
 		AccountID   string `json:"account_id"`
 		AmountCents int64  `json:"amount_cents"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON", "", nil)
+		return
+	}
+	if !p.IsOperator() && body.AccountID != p.AccountID {
+		WriteError(w, http.StatusForbidden, "FORBIDDEN", "investors can only deposit into their own account", "", nil)
 		return
 	}
 	inv := cfg.InvestorByAccountID(body.AccountID)
@@ -131,10 +144,9 @@ func createDeposit(w http.ResponseWriter, r *http.Request, cfg *config.Config, d
 		WriteError(w, http.StatusInternalServerError, domain.CodeSystemInternal, "internal error", "", nil)
 		return
 	}
-	key := apiKey
-	if key == "" {
-		key = inv.APIKey
-	}
+	// The funding rules run as the account's investor, also when an
+	// operator submits on their behalf.
+	key := inv.APIKey
 	res, err := pipeline.Run(r.Context(), deps, txID, key)
 	if err != nil {
 		slog.Error("pipeline failed", "error", err, "transfer_id", txID)
@@ -252,4 +264,27 @@ func transfersToJSON(ts []*domain.Transfer) []map[string]interface{} {
 		out[i] = transferToJSON(t)
 	}
 	return out
+}
+
+// canSeeTransfer writes 404 and returns false when the transfer is missing or
+// belongs to an account the caller may not read.
+func canSeeTransfer(w http.ResponseWriter, db *sql.DB, p *Principal, id string) bool {
+	if p.IsOperator() {
+		return true
+	}
+	t, err := store.GetTransfer(db, id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			WriteError(w, http.StatusNotFound, "NOT_FOUND", "transfer not found", id, nil)
+			return false
+		}
+		slog.Error("get transfer failed", "error", err)
+		WriteError(w, http.StatusInternalServerError, domain.CodeSystemInternal, "internal error", id, nil)
+		return false
+	}
+	if !p.CanSeeAccount(t.InvestorAccountID) {
+		WriteError(w, http.StatusNotFound, "NOT_FOUND", "transfer not found", id, nil)
+		return false
+	}
+	return true
 }

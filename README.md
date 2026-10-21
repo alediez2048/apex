@@ -90,11 +90,20 @@ ENV=development     # Environment (development/production)
 DB_PATH=data/apex.db  # SQLite database path
 ```
 
-Investor accounts and correspondents are configured in `config/investors.yaml` and `config/correspondents.yaml`.
+Investor accounts, back-office operators and correspondents are configured in `config/investors.yaml`, `config/operators.yaml` and `config/correspondents.yaml`. All keys in them are demo credentials.
+
+### Who can do what
+
+| Caller | Can |
+|---|---|
+| Investor (`tok_alice_001` and the rest of `investors.yaml`) | Submit deposits into their own account, read their own deposits, history, images, balance and ledger |
+| Operator (`tok_ops_jordan_001` in `operators.yaml`) | Everything above for every account, plus the review queue, settlement, returns and the dashboard |
+
+An investor asking for another account gets 403, or 404 for a transfer ID that belongs to someone else, so the API doesn't confirm it exists. The operator recorded on an approval or rejection is taken from the operator's key; a mismatched `X-Operator-ID` or `operator_id` is refused. The web console runs as the demo operator.
 
 ## Test Suite
 
-92 tests across 7 packages covering the PRD's 20 named test scenarios:
+100 tests across 7 packages covering the PRD's 20 named test scenarios:
 
 ```bash
 make test      # Run all tests

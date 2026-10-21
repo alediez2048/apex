@@ -17,7 +17,7 @@ import (
 // GET /api/v1/accounts/{id}/ledger  → ledger entries
 func AccountsHandler(cfg *config.Config, db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, ok := RequireAuth(w, r, cfg)
+		principal, ok := Authenticate(w, r, cfg)
 		if !ok {
 			return
 		}
@@ -35,6 +35,11 @@ func AccountsHandler(cfg *config.Config, db *sql.DB) http.HandlerFunc {
 
 		accountID := segments[0]
 		resource := segments[1]
+
+		if !principal.CanSeeAccount(accountID) {
+			WriteError(w, http.StatusForbidden, "FORBIDDEN", "investors can only read their own account", "", nil)
+			return
+		}
 
 		switch resource {
 		case "balance":

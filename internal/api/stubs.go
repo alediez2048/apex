@@ -21,7 +21,8 @@ import (
 // GET /api/v1/settlement/batches/{id}/items — list transfers in batch.
 func SettlementHandler(cfg *config.Config, db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, ok := RequireAuth(w, r, cfg)
+		// Settlement and returns are back-office work.
+		_, ok := RequireOperator(w, r, cfg)
 		if !ok {
 			return
 		}
@@ -134,7 +135,8 @@ func getSettlementBatchItems(w http.ResponseWriter, db *sql.DB, batchID string) 
 // POST /api/v1/returns — process a check return/reversal.
 func ReturnsHandler(cfg *config.Config, db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, ok := RequireAuth(w, r, cfg)
+		// Settlement and returns are back-office work.
+		_, ok := RequireOperator(w, r, cfg)
 		if !ok {
 			return
 		}

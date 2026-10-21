@@ -70,7 +70,8 @@
 ```
 Client POST /api/v1/deposits {account_id, amount_cents}
   │
-  ├─ Auth: Bearer token → resolve investor, correspondent, omnibus
+  ├─ Auth: Bearer token → investor (own account only) or operator (any account)
+  ├─ Resolve investor, correspondent, omnibus
   ├─ Create transfer (status: Requested)
   │
   ├─ Pipeline Step 1: Vendor Validation

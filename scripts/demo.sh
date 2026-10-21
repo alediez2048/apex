@@ -9,6 +9,8 @@ BASE="${1:-http://localhost:8080}"
 API="$BASE/api/v1"
 KEY="tok_alice_001"
 AUTH="Authorization: Bearer $KEY"
+# Back-office operator (config/operators.yaml): queue, settlement, returns.
+OPS_AUTH="Authorization: Bearer tok_ops_jordan_001"
 PASS=0
 FAIL=0
 TOTAL=0
@@ -119,7 +121,7 @@ act 2 "Vendor Rejections — IQA and Duplicate Failures"
 
 scene "Submit BLUR deposit (IQA blur failure)"
 RESP=$(curl -s -w "\n%{http_code}" -X POST "$API/deposits" \
-    -H "$AUTH" -H "Content-Type: application/json" \
+    -H "Authorization: Bearer tok_bob_002" -H "Content-Type: application/json" \
     -d '{"account_id":"BLUR-20001","amount_cents":5000}')
 HTTP=$(echo "$RESP" | tail -1)
 BODY=$(echo "$RESP" | sed '$d')
@@ -162,16 +164,21 @@ FLAGGED_TID=$(echo "$BODY" | jq -r '.transfer_id')
 # ═══════════════════════════════════════════════════════════
 act 4 "Operator Review — Approve and Reject"
 
+scene "An investor cannot approve their own flagged deposit"
+RESP=$(curl -s -w "\n%{http_code}" -X POST "$API/operator/queue/$FLAGGED_TID/approve" \
+    -H "Authorization: Bearer tok_carol_003" -H "Content-Type: application/json" -d '{}')
+HTTP=$(echo "$RESP" | tail -1)
+assert_status "Investor approve → 403" "403" "$HTTP"
+
 scene "List operator queue"
-RESP=$(curl -s -w "\n%{http_code}" "$API/operator/queue" -H "$AUTH")
+RESP=$(curl -s -w "\n%{http_code}" "$API/operator/queue" -H "$OPS_AUTH")
 HTTP=$(echo "$RESP" | tail -1)
 BODY=$(echo "$RESP" | sed '$d')
 assert_status "GET /operator/queue" "200" "$HTTP"
 
 scene "Operator approves flagged deposit"
 RESP=$(curl -s -w "\n%{http_code}" -X POST "$API/operator/queue/$FLAGGED_TID/approve" \
-    -H "$AUTH" -H "Content-Type: application/json" \
-    -d '{"operator_id":"demo-op"}')
+    -H "$OPS_AUTH" -H "Content-Type: application/json" -d '{}')
 HTTP=$(echo "$RESP" | tail -1)
 BODY=$(echo "$RESP" | sed '$d')
 assert_status "Approve → 200" "200" "$HTTP"
@@ -183,7 +190,7 @@ assert_field "status" ".status" "FundsPosted" "$BODY"
 act 5 "Settlement — Batch Generation"
 
 scene "Generate settlement batch"
-RESP=$(curl -s -w "\n%{http_code}" -X POST "$API/settlement/batches" -H "$AUTH")
+RESP=$(curl -s -w "\n%{http_code}" -X POST "$API/settlement/batches" -H "$OPS_AUTH")
 HTTP=$(echo "$RESP" | tail -1)
 BODY=$(echo "$RESP" | sed '$d')
 assert_status "POST /settlement/batches" "201" "$HTTP"
@@ -191,19 +198,19 @@ BATCH_ID=$(echo "$BODY" | jq -r '.batch_id')
 
 if [ "$BATCH_ID" != "null" ] && [ -n "$BATCH_ID" ]; then
     scene "Retrieve settlement file"
-    RESP=$(curl -s -w "\n%{http_code}" "$API/settlement/batches/$BATCH_ID" -H "$AUTH")
+    RESP=$(curl -s -w "\n%{http_code}" "$API/settlement/batches/$BATCH_ID" -H "$OPS_AUTH")
     HTTP=$(echo "$RESP" | tail -1)
     BODY=$(echo "$RESP" | sed '$d')
     assert_status "GET /settlement/batches/$BATCH_ID" "200" "$HTTP"
 
     scene "List batch items"
-    RESP=$(curl -s -w "\n%{http_code}" "$API/settlement/batches/$BATCH_ID/items" -H "$AUTH")
+    RESP=$(curl -s -w "\n%{http_code}" "$API/settlement/batches/$BATCH_ID/items" -H "$OPS_AUTH")
     HTTP=$(echo "$RESP" | tail -1)
     assert_status "GET /settlement/batches/$BATCH_ID/items" "200" "$HTTP"
 fi
 
 scene "Verify no double-batching"
-RESP=$(curl -s -w "\n%{http_code}" -X POST "$API/settlement/batches" -H "$AUTH")
+RESP=$(curl -s -w "\n%{http_code}" -X POST "$API/settlement/batches" -H "$OPS_AUTH")
 HTTP=$(echo "$RESP" | tail -1)
 BODY=$(echo "$RESP" | sed '$d')
 assert_status "Second batch → 200 (empty)" "200" "$HTTP"
@@ -216,7 +223,7 @@ act 6 "Return/Reversal — NSF Check Return"
 
 scene "Process return on deposit $TID"
 RESP=$(curl -s -w "\n%{http_code}" -X POST "$API/returns" \
-    -H "$AUTH" -H "Content-Type: application/json" \
+    -H "$OPS_AUTH" -H "Content-Type: application/json" \
     -d "{\"transfer_id\":\"$TID\",\"reason\":\"NSF\"}")
 HTTP=$(echo "$RESP" | tail -1)
 BODY=$(echo "$RESP" | sed '$d')

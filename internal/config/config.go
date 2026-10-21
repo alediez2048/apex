@@ -14,6 +14,15 @@ type Config struct {
 	DBPath         string
 	Correspondents []Correspondent
 	Investors      []Investor
+	Operators      []Operator
+}
+
+// Operator is a back-office reviewer who works the exception queue,
+// runs settlement and processes returns. Investors cannot do any of that.
+type Operator struct {
+	ID     string `yaml:"id"`
+	Name   string `yaml:"name"`
+	APIKey string `yaml:"api_key"`
 }
 
 // Correspondent is a firm with deposit limits and omnibus account.
@@ -41,6 +50,10 @@ type correspondentsFile struct {
 
 type investorsFile struct {
 	Investors []Investor `yaml:"investors"`
+}
+
+type operatorsFile struct {
+	Operators []Operator `yaml:"operators"`
 }
 
 // Load reads env and YAML files, validates, and returns Config.
@@ -82,6 +95,25 @@ func Load() (*Config, error) {
 	}
 	cfg.Investors = invFile.Investors
 
+	opPath := "config/operators.yaml"
+	opData, err := os.ReadFile(opPath)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", opPath, err)
+	}
+	var opFile operatorsFile
+	if err := yaml.Unmarshal(opData, &opFile); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", opPath, err)
+	}
+	cfg.Operators = opFile.Operators
+	for _, op := range cfg.Operators {
+		if op.ID == "" || op.APIKey == "" {
+			return nil, fmt.Errorf("%s: every operator needs an id and an api_key", opPath)
+		}
+		if cfg.InvestorByAPIKey(op.APIKey) != nil {
+			return nil, fmt.Errorf("%s: operator %s reuses an investor api_key", opPath, op.ID)
+		}
+	}
+
 	allowlist := make(map[string]bool)
 	for _, id := range corrFile.OmnibusAccounts {
 		allowlist[id] = true
@@ -103,6 +135,26 @@ func (c *Config) InvestorByAccountID(accountID string) *Investor {
 	for i := range c.Investors {
 		if c.Investors[i].AccountID == accountID {
 			return &c.Investors[i]
+		}
+	}
+	return nil
+}
+
+// InvestorByAPIKey returns the investor with the given API key, or nil.
+func (c *Config) InvestorByAPIKey(key string) *Investor {
+	for i := range c.Investors {
+		if c.Investors[i].APIKey == key {
+			return &c.Investors[i]
+		}
+	}
+	return nil
+}
+
+// OperatorByAPIKey returns the operator with the given API key, or nil.
+func (c *Config) OperatorByAPIKey(key string) *Operator {
+	for i := range c.Operators {
+		if c.Operators[i].APIKey == key {
+			return &c.Operators[i]
 		}
 	}
 	return nil

@@ -37,6 +37,7 @@ func main() {
 		"db_path", cfg.DBPath,
 		"correspondents", len(cfg.Correspondents),
 		"investors", len(cfg.Investors),
+		"operators", len(cfg.Operators),
 	)
 
 	db, err := store.Open(cfg.DBPath)
@@ -164,11 +165,13 @@ func main() {
 	slog.Info("server stopped")
 }
 
-// webHandler serves the embedded SPA and static assets; injects demo API key into index.html.
+// webHandler serves the embedded SPA and static assets. The UI is the
+// back-office console, so it runs as the first configured demo operator.
 func webHandler(cfg *config.Config, webRoot fs.FS) http.HandlerFunc {
-	demoKey := ""
-	if len(cfg.Investors) > 0 {
-		demoKey = cfg.Investors[0].APIKey
+	demoKey, demoOperatorID := "", ""
+	if len(cfg.Operators) > 0 {
+		demoKey = cfg.Operators[0].APIKey
+		demoOperatorID = cfg.Operators[0].ID
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/")
@@ -183,6 +186,7 @@ func webHandler(cfg *config.Config, webRoot fs.FS) http.HandlerFunc {
 				return
 			}
 			html := strings.ReplaceAll(string(index), "__DEMO_API_KEY__", demoKey)
+			html = strings.ReplaceAll(html, "__DEMO_OPERATOR_ID__", demoOperatorID)
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(html))

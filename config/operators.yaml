@@ -1,0 +1,6 @@
+# Back-office operators. Demo credentials only, like investors.yaml.
+# Operators work the exception queue, run settlement and process returns.
+operators:
+  - id: op-jordan
+    name: Jordan (operations)
+    api_key: tok_ops_jordan_001

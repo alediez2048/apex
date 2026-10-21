@@ -16,7 +16,7 @@ import (
 // GET /api/v1/operator/queue → list flagged, POST .../queue/{id}/approve, POST .../queue/{id}/reject.
 func OperatorHandler(cfg *config.Config, deps pipeline.Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, ok := RequireAuth(w, r, cfg)
+		principal, ok := RequireOperator(w, r, cfg)
 		if !ok {
 			return
 		}
@@ -54,9 +54,9 @@ func OperatorHandler(cfg *config.Config, deps pipeline.Deps) http.HandlerFunc {
 
 		switch action {
 		case "approve":
-			approveTransfer(w, r, cfg, deps, id)
+			approveTransfer(w, r, cfg, deps, id, principal)
 		case "reject":
-			rejectTransfer(w, r, deps, id)
+			rejectTransfer(w, r, deps, id, principal)
 		default:
 			WriteError(w, http.StatusNotFound, "NOT_FOUND", "not found", id, nil)
 		}
@@ -90,8 +90,7 @@ func listQueue(w http.ResponseWriter, r *http.Request, deps pipeline.Deps) {
 	WriteJSON(w, http.StatusOK, transfersToJSON(transfers))
 }
 
-func approveTransfer(w http.ResponseWriter, r *http.Request, cfg *config.Config, deps pipeline.Deps, id string) {
-	operatorID := r.Header.Get("X-Operator-ID")
+func approveTransfer(w http.ResponseWriter, r *http.Request, cfg *config.Config, deps pipeline.Deps, id string, p *Principal) {
 	var body struct {
 		OperatorID       string `json:"operator_id"`
 		ContributionType string `json:"contribution_type"`
@@ -99,11 +98,8 @@ func approveTransfer(w http.ResponseWriter, r *http.Request, cfg *config.Config,
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 	}
-	if operatorID == "" {
-		operatorID = body.OperatorID
-	}
-	if operatorID == "" {
-		WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "operator_id is required (header X-Operator-ID or body)", id, nil)
+	operatorID, ok := resolveOperatorID(w, r, p, body.OperatorID, id)
+	if !ok {
 		return
 	}
 
@@ -124,7 +120,7 @@ func approveTransfer(w http.ResponseWriter, r *http.Request, cfg *config.Config,
 	})
 }
 
-func rejectTransfer(w http.ResponseWriter, r *http.Request, deps pipeline.Deps, id string) {
+func rejectTransfer(w http.ResponseWriter, r *http.Request, deps pipeline.Deps, id string, p *Principal) {
 	var body struct {
 		OperatorID string `json:"operator_id"`
 		Reason     string `json:"reason"`
@@ -132,12 +128,8 @@ func rejectTransfer(w http.ResponseWriter, r *http.Request, deps pipeline.Deps, 
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 	}
-	operatorID := r.Header.Get("X-Operator-ID")
-	if operatorID == "" {
-		operatorID = body.OperatorID
-	}
-	if operatorID == "" {
-		WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "operator_id is required (header X-Operator-ID or body)", id, nil)
+	operatorID, ok := resolveOperatorID(w, r, p, body.OperatorID, id)
+	if !ok {
 		return
 	}
 	reason := body.Reason
@@ -155,4 +147,18 @@ func rejectTransfer(w http.ResponseWriter, r *http.Request, deps pipeline.Deps, 
 		"status":      string(domain.StateRejected),
 		"message":     "rejected by operator:" + operatorID,
 	})
+}
+
+// resolveOperatorID returns the operator identity recorded on the decision.
+// It always comes from the authenticated token. A client may still send
+// X-Operator-ID or operator_id, but only if it matches the token; anything
+// else is refused rather than written to the audit trail.
+func resolveOperatorID(w http.ResponseWriter, r *http.Request, p *Principal, bodyID, transferID string) (string, bool) {
+	for _, claimed := range []string{r.Header.Get("X-Operator-ID"), bodyID} {
+		if claimed != "" && claimed != p.OperatorID {
+			WriteError(w, http.StatusForbidden, "FORBIDDEN", "operator_id does not match the authenticated operator", transferID, nil)
+			return "", false
+		}
+	}
+	return p.OperatorID, true
 }

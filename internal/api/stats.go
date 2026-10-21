@@ -17,7 +17,8 @@ func StatsHandler(cfg *config.Config, db *sql.DB) http.HandlerFunc {
 			WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", "", nil)
 			return
 		}
-		_, ok := RequireAuth(w, r, cfg)
+		// The dashboard is an operations view across every account.
+		_, ok := RequireOperator(w, r, cfg)
 		if !ok {
 			return
 		}

@@ -45,11 +45,10 @@ See [reports/scenario_coverage.md](reports/scenario_coverage.md) for the full te
 
 1. **Add Federal Reserve holiday calendar** to the settlement business day calculation (currently weekends-only).
 2. **Implement multi-factor risk scoring** — incorporate deposit amount, account velocity, and MICR quality alongside vendor confidence.
-3. **Add operator authentication** separate from investor auth, with role-based access control for the review queue.
-4. **Implement webhook notifications** for deposit status changes (FundsPosted, Returned) to support real-time mobile client updates.
-5. **Add database connection pooling and PostgreSQL support** for production-grade concurrency beyond SQLite's single-writer model.
-6. **Build a return notification email/SMS pipeline** instead of the current in-database INVESTOR_NOTIFIED event.
-7. **Add rate limiting and request validation middleware** to protect against abuse at the API boundary.
+3. **Implement webhook notifications** for deposit status changes (FundsPosted, Returned) to support real-time mobile client updates.
+4. **Add database connection pooling and PostgreSQL support** for production-grade concurrency beyond SQLite's single-writer model.
+5. **Build a return notification email/SMS pipeline** instead of the current in-database INVESTOR_NOTIFIED event.
+6. **Add rate limiting and request validation middleware** to protect against abuse at the API boundary.
 
 ## Risks and Limitations
 

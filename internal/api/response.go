@@ -53,21 +53,59 @@ func WriteDomainError(w http.ResponseWriter, err error, transferID string) {
 	WriteError(w, status, de.Code(), de.Error(), transferID, nil)
 }
 
-// RequireAuth extracts and validates a Bearer token against configured investor API keys.
-// Returns the API key and true if valid; writes a 401 error and returns false if not.
-func RequireAuth(w http.ResponseWriter, r *http.Request, cfg *config.Config) (string, bool) {
+// Role is what an authenticated caller is allowed to do.
+type Role string
+
+const (
+	RoleInvestor Role = "investor"
+	RoleOperator Role = "operator"
+)
+
+// Principal is the authenticated caller.
+type Principal struct {
+	Role       Role
+	APIKey     string
+	AccountID  string // investors only
+	OperatorID string // operators only
+}
+
+// IsOperator reports whether the caller is a back-office operator.
+func (p *Principal) IsOperator() bool { return p != nil && p.Role == RoleOperator }
+
+// CanSeeAccount reports whether the caller may read data for accountID.
+// Operators see every account; investors see only their own.
+func (p *Principal) CanSeeAccount(accountID string) bool {
+	return p.IsOperator() || (p != nil && p.AccountID == accountID)
+}
+
+// Authenticate validates the Bearer token against configured investor and
+// operator keys and writes 401 on failure.
+func Authenticate(w http.ResponseWriter, r *http.Request, cfg *config.Config) (*Principal, bool) {
 	token := BearerToken(r.Header.Get("Authorization"))
-	if token == "" {
-		WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing or invalid API key", "", nil)
-		return "", false
-	}
-	for _, inv := range cfg.Investors {
-		if inv.APIKey == token {
-			return token, true
+	if token != "" {
+		if inv := cfg.InvestorByAPIKey(token); inv != nil {
+			return &Principal{Role: RoleInvestor, APIKey: token, AccountID: inv.AccountID}, true
+		}
+		if op := cfg.OperatorByAPIKey(token); op != nil {
+			return &Principal{Role: RoleOperator, APIKey: token, OperatorID: op.ID}, true
 		}
 	}
 	WriteError(w, http.StatusUnauthorized, "UNAUTHORIZED", "missing or invalid API key", "", nil)
-	return "", false
+	return nil, false
+}
+
+// RequireOperator authenticates the caller and rejects anyone who is not an
+// operator with 403.
+func RequireOperator(w http.ResponseWriter, r *http.Request, cfg *config.Config) (*Principal, bool) {
+	p, ok := Authenticate(w, r, cfg)
+	if !ok {
+		return nil, false
+	}
+	if !p.IsOperator() {
+		WriteError(w, http.StatusForbidden, "FORBIDDEN", "operator role required", "", nil)
+		return nil, false
+	}
+	return p, true
 }
 
 // BearerToken extracts the token from an Authorization header value.
