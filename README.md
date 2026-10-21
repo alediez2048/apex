@@ -116,6 +116,10 @@ See [reports/](reports/) for test coverage and demo results after running `make 
 
 On the standalone vendor stub (`/api/v1/vendor/validate`), you can force a scenario with the `X-Vendor-Scenario` header. The deposit pipeline itself picks the scenario from the account prefix above. Values: `CLEAN_PASS`, `IQA_BLUR`, `IQA_GLARE`, `MICR_FAILURE`, `DUPLICATE`, `AMOUNT_MISMATCH`.
 
+## How it was built
+
+AI coding assistants wrote much of the first draft. The ledger invariants, state machine and settlement rules are pinned by the Go test suite (`go test -race ./...`, run in CI on every push), and the design trade-offs are recorded in [docs/decision_log.md](docs/decision_log.md).
+
 ## Disclaimers
 
 - All data is synthetic. No real PII, check images, account numbers, or routing numbers are used.

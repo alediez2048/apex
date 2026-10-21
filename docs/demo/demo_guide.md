@@ -11,8 +11,7 @@
 3. [System Architecture Walkthrough](#3-system-architecture-walkthrough)
 4. [Key Files & Components](#4-key-files--components)
 5. [Demo Script (6 Acts)](#5-demo-script-6-acts)
-6. [Rubric Alignment Checklist](#6-rubric-alignment-checklist)
-7. [Presenter Talking Points](#7-presenter-talking-points)
+6. [Presenter Talking Points](#6-presenter-talking-points)
 8. [Troubleshooting](#8-troubleshooting)
 
 ---
@@ -196,7 +195,7 @@ This is enforced by:
 
 | File | Purpose | Demo Relevance |
 |---|---|---|
-| `internal/vendor/stub.go` | 7-scenario vendor stub with magic prefix routing + header override | **15 rubric points.** Show how `BLUR-10001` deterministically triggers a blur failure. |
+| `internal/vendor/stub.go` | 7-scenario vendor stub with magic prefix routing + header override | Show how `BLUR-10001` deterministically triggers a blur failure. |
 | `internal/funding/rules.go` | Business rules: $5,000 limit, duplicate detection (composite key, 30-day window), contribution type defaults | Show each rule with a failing test case. |
 | `internal/funding/ledger.go` | Double-entry posting: `postToLedger()` creates balanced DEBIT/CREDIT pairs | **The financial heart.** Show the single function that guarantees correctness. |
 | `internal/funding/pipeline.go` | Step function orchestrator: vendor → rules → ledger | Show how deposits flow through a 3-step pipeline. |
@@ -219,7 +218,7 @@ This is enforced by:
 |---|---|---|
 | `web/index.html` | Dashboard with live benchmark cards | **First thing the reviewer sees.** Show all KPIs at a glance. |
 | `web/submit.html` | Deposit submission form | Demo submitting a deposit via browser. |
-| `web/operator.html` | Review queue with images, risk scores, approve/reject | **10 rubric points.** Show the full operator workflow visually. |
+| `web/operator.html` | Review queue with images, risk scores, approve/reject | Show the full operator workflow visually. |
 
 ### 4.6 Testing & Demo
 
@@ -234,7 +233,7 @@ This is enforced by:
 | File | Purpose | Demo Relevance |
 |---|---|---|
 | `docs/architecture/architecture.md` | System diagram, data flow, service boundaries | Supporting material for architecture walkthrough. |
-| `docs/architecture/decision_log.md` | 10 ADRs: language, data store, vendor stub, settlement, etc. | Show trade-off rationale (20 rubric points). |
+| `docs/decision_log.md` | 10 ADRs: language, data store, vendor stub, settlement, etc. | Show trade-off rationale. |
 | `SUBMISSION.md` | Summary, setup commands, eval results, risks/limitations | Required submission format. |
 
 ---
@@ -286,7 +285,7 @@ The automated demo (`make demo` / `scripts/demo.sh`) runs all 6 acts sequentiall
 - [ ] No ledger entries created for rejected deposits
 - [ ] Error messages are human-readable and actionable
 
-**Talking point:** *"The vendor stub is worth 15 points on the rubric. Each account prefix deterministically triggers a different failure. The tests are self-documenting — when you see `BLUR-20001`, you know exactly what will happen."*
+**Talking point:** *"Each account prefix deterministically triggers a different failure. The tests are self-documenting — when you see `BLUR-20001`, you know exactly what will happen."*
 
 ---
 
@@ -407,25 +406,7 @@ The automated script produces a final summary:
 
 ---
 
-## 6. Rubric Alignment Checklist
-
-Use this checklist to verify the demo covers every rubric point before presenting.
-
-| Category | Points | Demo Coverage | Act(s) |
-|---|---|---|---|
-| **System Design & Architecture** | 20 | Component diagram, data flow walkthrough, decision log (10 ADRs), state machine, project structure | Pre-demo walkthrough + docs |
-| **Core Correctness** | 25 | Happy path E2E, business rules enforced, state transitions verified, ledger postings balanced | Acts 1, 3, 6 |
-| **Vendor Stub Quality** | 15 | All 7 scenarios exercised (PASS, BLUR, GLARE, MICR, DUP, MISMATCH, CLEAN), deterministic via prefixes, header override | Acts 1, 2, 4 |
-| **Operator Workflow & Observability** | 10 | Review queue with images/risk scores, approve/reject with audit logging, per-deposit decision trace, benchmark dashboard | Act 4 + web UI |
-| **Return/Reversal Handling** | 10 | Bounced check reversed with $30 fee, 4 balanced ledger entries, state transition to Returned | Act 5 |
-| **Tests & Evaluation Rigor** | 10 | 20+ tests, all paths exercised, coverage report in `/reports`, demo script as additional validation | `make test` + Act 6 |
-| **Developer Experience** | 10 | `make dev` (one command), `make demo-full` (self-contained), README, demo script, decision log | Setup + `make help` |
-
-**Total: 100 points addressable**
-
----
-
-## 7. Presenter Talking Points
+## 6. Presenter Talking Points
 
 ### Opening (30 seconds)
 
